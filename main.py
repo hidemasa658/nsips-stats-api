@@ -401,7 +401,10 @@ def dashboard(
                  MAX(d.unit) AS unit
           FROM rps r
           JOIN drugs d ON d.prescription_id = r.prescription_id AND d.rp_no = r.rp_no
-          WHERE r.is_mixed = 1 AND d.name IS NOT NULL AND d.form = '外用'
+          WHERE r.is_mixed = 1
+            AND r.site_text = '混合'          -- 誤検出 (旧 drug_count>=2 判定) を除外
+            AND d.name IS NOT NULL
+            AND d.form = '外用'
           GROUP BY r.id
         )
         SELECT combo, mix_qty, unit, COUNT(*) AS n
