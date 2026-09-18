@@ -551,6 +551,7 @@ def dashboard(
            FROM fees f
            LEFT JOIN fee_master m ON f.code = m.code
            WHERE f.code IS NOT NULL
+             AND (LENGTH(f.code) >= 5 OR m.code IS NOT NULL)  -- 実加算コードは通常 9 桁、防御的フィルタ
            GROUP BY f.fee_type, f.code, display_name, master_points
            ORDER BY total_count DESC, total_points DESC"""
     ).fetchall()
