@@ -110,3 +110,106 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
 
     conn.commit()
     return IngestResponse(status="ok", prescription_id=presc_id)
+
+
+from models import (  # noqa: E402
+    ClinicStat,
+    ClinicsResponse,
+    DrugStat,
+    DrugsResponse,
+    MixBreakdown,
+    MixResponse,
+    PrescriptionOut,
+    PrescriptionsExportResponse,
+)
+
+
+@app.get("/stats/drugs", response_model=DrugsResponse)
+def stats_drugs(_: None = Depends(verify_token)) -> DrugsResponse:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT yj_code, name, unit, COUNT(*) AS n, SUM(quantity) AS qty
+        FROM drugs
+        GROUP BY yj_code, name, unit
+        ORDER BY n DESC
+        """
+    ).fetchall()
+    return DrugsResponse(
+        rows=[
+            DrugStat(yj_code=r["yj_code"], name=r["name"], unit=r["unit"], n=r["n"], qty=r["qty"])
+            for r in rows
+        ]
+    )
+
+
+@app.get("/stats/clinics", response_model=ClinicsResponse)
+def stats_clinics(_: None = Depends(verify_token)) -> ClinicsResponse:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT clinic_code_enc, clinic_name_enc, COUNT(*) AS n
+        FROM prescriptions
+        GROUP BY clinic_code_enc, clinic_name_enc
+        ORDER BY n DESC
+        """
+    ).fetchall()
+    return ClinicsResponse(
+        rows=[
+            ClinicStat(
+                clinic_code_enc=r["clinic_code_enc"],
+                clinic_name_enc=r["clinic_name_enc"],
+                n=r["n"],
+            )
+            for r in rows
+        ]
+    )
+
+
+@app.get("/stats/mix", response_model=MixResponse)
+def stats_mix(_: None = Depends(verify_token)) -> MixResponse:
+    conn = get_conn()
+    total = conn.execute(
+        "SELECT COUNT(DISTINCT prescription_id) FROM fees WHERE is_mix_flag = 1"
+    ).fetchone()[0]
+    breakdown_rows = conn.execute(
+        """
+        SELECT drug_count, COUNT(*) AS n FROM (
+          SELECT prescription_id, COUNT(*) AS drug_count
+          FROM drugs
+          WHERE prescription_id IN (
+            SELECT DISTINCT prescription_id FROM fees WHERE is_mix_flag = 1
+          )
+          GROUP BY prescription_id
+        )
+        GROUP BY drug_count
+        ORDER BY drug_count
+        """
+    ).fetchall()
+    return MixResponse(
+        total=total,
+        breakdown=[MixBreakdown(drug_count=r["drug_count"], n=r["n"]) for r in breakdown_rows],
+    )
+
+
+@app.get("/stats/export/prescriptions", response_model=PrescriptionsExportResponse)
+def export_prescriptions(_: None = Depends(verify_token)) -> PrescriptionsExportResponse:
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT id, source_id, detected_at, clinic_code_enc, clinic_name_enc,
+                  prescription_date_enc, doctor_name_enc FROM prescriptions ORDER BY id"""
+    ).fetchall()
+    return PrescriptionsExportResponse(
+        rows=[
+            PrescriptionOut(
+                id=r["id"],
+                source_id=r["source_id"],
+                detected_at=r["detected_at"],
+                clinic_code_enc=r["clinic_code_enc"],
+                clinic_name_enc=r["clinic_name_enc"],
+                prescription_date_enc=r["prescription_date_enc"],
+                doctor_name_enc=r["doctor_name_enc"],
+            )
+            for r in rows
+        ]
+    )
