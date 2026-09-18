@@ -1,12 +1,15 @@
 """nsips-stats-api FastAPI エントリポイント。"""
 from __future__ import annotations
 
+import html as html_lib
 import os
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi.responses import HTMLResponse
 
 from db import init_db
 
@@ -213,3 +216,122 @@ def export_prescriptions(_: None = Depends(verify_token)) -> PrescriptionsExport
             for r in rows
         ]
     )
+
+
+# ==============================================================================
+# HTML ダッシュボード (ブラウザ表示用)
+# ==============================================================================
+
+
+DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="60">
+<title>nsips-stats ダッシュボード</title>
+<style>
+* {{ box-sizing: border-box; }}
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; max-width: 1200px; margin: 20px auto; padding: 0 20px; color: #222; line-height: 1.5; }}
+h1 {{ border-bottom: 3px solid #333; padding-bottom: 8px; margin-bottom: 20px; }}
+h2 {{ margin-top: 40px; color: #444; border-left: 4px solid #3b82f6; padding-left: 10px; }}
+table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
+th, td {{ padding: 8px 12px; border-bottom: 1px solid #ddd; text-align: left; }}
+th {{ background: #f5f5f5; font-weight: 600; position: sticky; top: 0; }}
+tr:hover {{ background: #f9f9f9; }}
+.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+.summary {{ background: #e0f2fe; padding: 16px 24px; border-radius: 8px; margin: 20px 0; display: flex; gap: 40px; flex-wrap: wrap; }}
+.summary .item {{ display: flex; flex-direction: column; }}
+.summary .big {{ font-size: 28px; font-weight: bold; color: #0369a1; }}
+.summary .label {{ font-size: 14px; color: #64748b; }}
+.updated {{ color: #888; font-size: 12px; margin-top: 30px; text-align: right; }}
+@media (max-width: 640px) {{
+  .summary {{ flex-direction: column; gap: 12px; }}
+  table {{ font-size: 13px; }}
+  th, td {{ padding: 6px 8px; }}
+}}
+</style>
+</head>
+<body>
+<h1>💊 nsips-stats ダッシュボード</h1>
+
+<div class="summary">
+  <div class="item"><span class="big">{prescription_count}</span><span class="label">総処方受入件数</span></div>
+  <div class="item"><span class="big">{drug_kinds}</span><span class="label">薬品種類</span></div>
+  <div class="item"><span class="big">{mix_total}</span><span class="label">計量混合加算件数</span></div>
+</div>
+
+<h2>薬剤別累計 (調剤回数上位 50 品目)</h2>
+<table>
+<thead><tr><th>YJコード</th><th>薬品名</th><th class="num">回数</th><th class="num">総数量</th><th>単位</th></tr></thead>
+<tbody>
+{drug_rows}
+</tbody>
+</table>
+
+<h2>計量混合加算 内訳</h2>
+<table>
+<thead><tr><th>混合品目数</th><th class="num">該当件数</th></tr></thead>
+<tbody>
+{mix_rows}
+</tbody>
+</table>
+
+<div class="updated">最終更新: {now} (60秒ごとに自動再読込)</div>
+</body>
+</html>
+"""
+
+
+def _h(v) -> str:
+    return html_lib.escape(str(v) if v is not None else "")
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard(
+    x_api_token: str | None = Header(default=None),
+    token: str | None = Query(default=None),
+) -> HTMLResponse:
+    provided = x_api_token or token
+    if not API_TOKEN or provided != API_TOKEN:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
+
+    conn = get_conn()
+
+    prescription_count = conn.execute("SELECT COUNT(*) FROM prescriptions").fetchone()[0]
+    drug_kinds = conn.execute("SELECT COUNT(DISTINCT yj_code) FROM drugs WHERE yj_code IS NOT NULL").fetchone()[0]
+
+    drug_data = conn.execute(
+        """SELECT yj_code, name, unit, COUNT(*) AS n, SUM(quantity) AS qty
+           FROM drugs GROUP BY yj_code, name, unit ORDER BY n DESC, qty DESC LIMIT 50"""
+    ).fetchall()
+    drug_rows_html = "\n".join(
+        f'<tr><td>{_h(r["yj_code"])}</td><td>{_h(r["name"])}</td>'
+        f'<td class="num">{r["n"]}</td><td class="num">{(r["qty"] or 0):.2f}</td>'
+        f'<td>{_h(r["unit"])}</td></tr>'
+        for r in drug_data
+    ) or '<tr><td colspan="5">(データなし)</td></tr>'
+
+    mix_total = conn.execute(
+        "SELECT COUNT(DISTINCT prescription_id) FROM fees WHERE is_mix_flag = 1"
+    ).fetchone()[0]
+    mix_data = conn.execute(
+        """SELECT drug_count, COUNT(*) AS n FROM (
+             SELECT prescription_id, COUNT(*) AS drug_count FROM drugs
+             WHERE prescription_id IN (SELECT DISTINCT prescription_id FROM fees WHERE is_mix_flag = 1)
+             GROUP BY prescription_id) GROUP BY drug_count ORDER BY drug_count"""
+    ).fetchall()
+    mix_rows_html = "\n".join(
+        f'<tr><td>{r["drug_count"]} 品目</td><td class="num">{r["n"]}</td></tr>'
+        for r in mix_data
+    ) or '<tr><td colspan="2">(該当なし)</td></tr>'
+
+    html = DASHBOARD_HTML.format(
+        prescription_count=prescription_count,
+        drug_kinds=drug_kinds,
+        drug_rows=drug_rows_html,
+        mix_total=mix_total,
+        mix_rows=mix_rows_html,
+        now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    return HTMLResponse(content=html)
