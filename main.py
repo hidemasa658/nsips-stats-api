@@ -97,13 +97,14 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
         conn.execute(
             """
             INSERT INTO drugs
-              (prescription_id, rp_no_enc, rp_no, yj_code, name, quantity, unit_price,
-               unit, form, dosage_form_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (prescription_id, rp_no_enc, rp_no, yj_code, name, quantity, total_quantity,
+               unit_price, unit, form, dosage_form_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 presc_id, d.rp_no_enc, d.rp_no, d.yj_code, d.name,
-                d.quantity, d.unit_price, d.unit, d.form, d.dosage_form_code,
+                d.quantity, d.total_quantity, d.unit_price, d.unit,
+                d.form, d.dosage_form_code,
             ),
         )
 
@@ -413,7 +414,7 @@ def dashboard(
                   dm.unit_price AS master_price,
                   dm.generic_name,
                   COUNT(*) AS n,
-                  SUM(d.quantity) AS qty
+                  SUM(COALESCE(d.total_quantity, d.quantity)) AS qty
            FROM drugs d
            LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
            GROUP BY d.yj_code, drug_name, drug_unit, d.form, dm.unit_price, dm.generic_name
