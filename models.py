@@ -44,10 +44,20 @@ class FeeIn(BaseModel):
     is_mix_flag: bool = False
 
 
+class TotalsIn(BaseModel):
+    total_points: int | None = None
+    dispensing_base_fee: int | None = None
+    night_holiday_fee: int | None = None
+    management_fee: int | None = None
+    long_prescription_fee: int | None = None
+    patient_copay: int | None = None
+
+
 class IngestPayload(BaseModel):
     source_id: str
     detected_at: str
     body_sanitized: str | None = None
+    totals: TotalsIn | None = None
     clinic_code_enc: str | None = None
     clinic_name_enc: str | None = None
     prescription_date_enc: str | None = None

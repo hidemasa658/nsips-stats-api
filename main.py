@@ -65,12 +65,15 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
     if row is not None:
         return IngestResponse(status="duplicate", prescription_id=row["id"])
 
+    t = payload.totals
     cur = conn.execute(
         """
         INSERT INTO prescriptions
           (source_id, detected_at, body_sanitized, clinic_code_enc, clinic_name_enc,
-           prescription_date_enc, doctor_name_enc)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+           prescription_date_enc, doctor_name_enc,
+           total_points, dispensing_base_fee, night_holiday_fee,
+           management_fee, long_prescription_fee, patient_copay)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payload.source_id,
@@ -80,6 +83,12 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
             payload.clinic_name_enc,
             payload.prescription_date_enc,
             payload.doctor_name_enc,
+            t.total_points if t else None,
+            t.dispensing_base_fee if t else None,
+            t.night_holiday_fee if t else None,
+            t.management_fee if t else None,
+            t.long_prescription_fee if t else None,
+            t.patient_copay if t else None,
         ),
     )
     presc_id = cur.lastrowid
@@ -295,6 +304,18 @@ tr:hover {{ background: #f9f9f9; }}
   <div class="item"><span class="big">{mix_total}</span><span class="label">計量混合加算件数</span></div>
 </div>
 
+<h2>経営集計 (record 5)</h2>
+<div class="summary">
+  <div class="item"><span class="big">{t_total_points:,}</span><span class="label">総請求点数</span></div>
+  <div class="item"><span class="big">{t_patient_copay:,}</span><span class="label">総患者負担金 (円)</span></div>
+  <div class="item"><span class="big">{t_dispensing_base:,}</span><span class="label">調剤基本料 累計</span></div>
+</div>
+<div class="summary">
+  <div class="item"><span class="big">{t_night_holiday:,}</span><span class="label">夜間・休日等加算 累計</span></div>
+  <div class="item"><span class="big">{t_management:,}</span><span class="label">薬学管理料 累計</span></div>
+  <div class="item"><span class="big">{t_long_prescription:,}</span><span class="label">長期処方関連 累計</span></div>
+</div>
+
 <h2>剤形別 集計</h2>
 <div class="summary">
   <div class="item"><span class="big">{form_internal}</span><span class="label">内服 品目 (回数)</span></div>
@@ -419,6 +440,18 @@ def dashboard(
             f'<td class="num">{price}</td></tr>'
         )
     drug_rows_html = "\n".join(_drug_row(r) for r in drug_data) or '<tr><td colspan="7">(データなし)</td></tr>'
+
+    # record 5 全体集計の累計 (経営指標)
+    t_agg = conn.execute(
+        """SELECT
+             COALESCE(SUM(total_points), 0) AS total_points,
+             COALESCE(SUM(patient_copay), 0) AS patient_copay,
+             COALESCE(SUM(dispensing_base_fee), 0) AS dispensing_base,
+             COALESCE(SUM(night_holiday_fee), 0) AS night_holiday,
+             COALESCE(SUM(management_fee), 0) AS management,
+             COALESCE(SUM(long_prescription_fee), 0) AS long_prescription
+           FROM prescriptions"""
+    ).fetchone()
 
     # 基本料 (record 6 基本料バリアント) の累計
     dp_agg = conn.execute(
@@ -561,6 +594,12 @@ def dashboard(
         dp_total_dispensing=dp_total_dispensing,
         dp_total_drug_fee=dp_total_drug_fee,
         dp_count=dp_count,
+        t_total_points=t_agg["total_points"],
+        t_patient_copay=t_agg["patient_copay"],
+        t_dispensing_base=t_agg["dispensing_base"],
+        t_night_holiday=t_agg["night_holiday"],
+        t_management=t_agg["management"],
+        t_long_prescription=t_agg["long_prescription"],
         recent_rows=recent_rows_html,
         now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
