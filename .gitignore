@@ -13,3 +13,5 @@ deploy/certs/*.key
 deploy/certs/*.crt
 deploy/certs/*.srl
 deploy/certs/*.csr
+deploy/certs/*.p12
+deploy/certs/*.pfx
