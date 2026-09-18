@@ -444,13 +444,8 @@ def dashboard(
         """SELECT d.yj_code,
                   COALESCE(dm.name, d.name) AS drug_name,
                   COALESCE(dm.unit, d.unit) AS drug_unit,
-                  -- マスタの usage_category (1=内用 4=注射 6=外用) を優先、無ければクライアント側の form
-                  CASE
-                    WHEN dm.usage_category = '1' THEN '内用'
-                    WHEN dm.usage_category = '4' THEN '注射'
-                    WHEN dm.usage_category = '6' THEN '外用'
-                    ELSE d.form
-                  END AS drug_form,
+                  dm.usage_category,
+                  d.form AS client_form,
                   dm.unit_price AS master_price,
                   dm.generic_name,
                   COUNT(*) AS n,
@@ -458,18 +453,67 @@ def dashboard(
                   SUM(CASE WHEN d.total_quantity IS NOT NULL THEN 1 ELSE 0 END) AS valid_n
            FROM drugs d
            LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
-           GROUP BY d.yj_code, drug_name, drug_unit, drug_form, dm.unit_price, dm.generic_name
+           GROUP BY d.yj_code, drug_name, drug_unit, dm.usage_category, d.form, dm.unit_price, dm.generic_name
            ORDER BY n DESC, qty DESC LIMIT 50"""
     ).fetchall()
 
-    def _form_badge(form):
-        if form == "内用" or form == "内服":
-            return '<span class="badge badge-in">内用</span>'
-        if form == "外用":
-            return '<span class="badge badge-ext">外用</span>'
-        if form == "注射":
-            return '<span class="badge badge-inj">注射</span>'
-        return '<span class="badge badge-other">その他</span>'
+    def _detailed_form(yj_code: str | None, usage_cat: str | None, client_form: str | None) -> tuple[str, str]:
+        """(category, 詳細剤形) を返す。category は badge 色に使う。"""
+        if not yj_code or len(yj_code) < 8:
+            return ("other", client_form or "?")
+        letter = yj_code[7]
+        # マスタ usage_category が無い場合はクライアント form から推定
+        if usage_cat is None:
+            if client_form == "内用" or client_form == "内服":
+                usage_cat = "1"
+            elif client_form == "注射":
+                usage_cat = "4"
+            elif client_form == "外用":
+                usage_cat = "6"
+            else:
+                return ("other", client_form or "?")
+
+        if usage_cat == "1":  # 内用
+            if letter in "ABCDE":
+                return ("in", "散剤")
+            elif letter in "FGHIJKL":
+                return ("in", "錠剤")
+            elif letter in "MNOP":
+                return ("in", "液剤")
+            else:
+                return ("in", "内用その他")
+        elif usage_cat == "4":  # 注射
+            if letter in "ABCHJKQ":
+                return ("inj", "注射液")
+            elif letter in "DEFLMNR":
+                return ("inj", "注射用散剤")
+            elif letter in "GPS":
+                return ("inj", "キット類")
+            else:
+                return ("inj", "注射その他")
+        elif usage_cat == "6":  # 外用
+            if letter in "ABCDEFG":
+                return ("ext", "軟膏・クリーム等")
+            elif letter in "HJK":
+                return ("ext", "経口用剤")
+            elif letter in "LMNPQR":
+                return ("ext", "挿入/眼耳鼻")
+            elif letter == "S":
+                return ("ext", "皮膚塗布剤")
+            elif letter == "T":
+                return ("ext", "貼付剤")
+            elif letter == "U":
+                return ("ext", "診断剤")
+            elif letter == "X":
+                return ("ext", "外用注射")
+            else:
+                return ("ext", "外用その他")
+        return ("other", "?")
+
+    def _form_badge_detailed(yj_code, usage_cat, client_form):
+        cat, label = _detailed_form(yj_code, usage_cat, client_form)
+        cls = f"badge-{cat}"
+        return f'<span class="badge {cls}">{label}</span>'
 
     def _drug_row(r):
         generic = f'<div class="generic">{_h(r["generic_name"])}</div>' if r["generic_name"] else ""
@@ -484,7 +528,7 @@ def dashboard(
         else:
             qty_display = '<span class="generic">旧データ (要 .txt 再来)</span>'
         return (
-            f'<tr><td>{_form_badge(r["drug_form"])}</td>'
+            f'<tr><td>{_form_badge_detailed(r["yj_code"], r["usage_category"], r["client_form"])}</td>'
             f'<td>{_h(r["yj_code"])}</td>'
             f'<td>{_h(r["drug_name"])}{generic}</td>'
             f'<td class="num">{r["n"]}</td>'
