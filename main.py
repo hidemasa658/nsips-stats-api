@@ -48,3 +48,65 @@ def verify_token(x_api_token: str | None = Header(default=None)) -> None:
 @app.get("/health")
 def health(_: None = Depends(verify_token)) -> dict:
     return {"status": "ok"}
+
+
+from models import IngestPayload, IngestResponse  # noqa: E402
+
+
+@app.post("/ingest", response_model=IngestResponse)
+def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestResponse:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT id FROM prescriptions WHERE source_id=?", (payload.source_id,)
+    ).fetchone()
+    if row is not None:
+        return IngestResponse(status="duplicate", prescription_id=row["id"])
+
+    cur = conn.execute(
+        """
+        INSERT INTO prescriptions
+          (source_id, detected_at, clinic_code_enc, clinic_name_enc,
+           prescription_date_enc, doctor_name_enc)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            payload.source_id,
+            payload.detected_at,
+            payload.clinic_code_enc,
+            payload.clinic_name_enc,
+            payload.prescription_date_enc,
+            payload.doctor_name_enc,
+        ),
+    )
+    presc_id = cur.lastrowid
+
+    for d in payload.drugs:
+        conn.execute(
+            """
+            INSERT INTO drugs
+              (prescription_id, rp_no_enc, yj_code, name, quantity, unit)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (presc_id, d.rp_no_enc, d.yj_code, d.name, d.quantity, d.unit),
+        )
+
+    for f in payload.fees:
+        conn.execute(
+            """
+            INSERT INTO fees
+              (prescription_id, fee_type, code_enc, name_enc, count, points, is_mix_flag)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                presc_id,
+                f.fee_type,
+                f.code_enc,
+                f.name_enc,
+                f.count,
+                f.points,
+                1 if f.is_mix_flag else 0,
+            ),
+        )
+
+    conn.commit()
+    return IngestResponse(status="ok", prescription_id=presc_id)
