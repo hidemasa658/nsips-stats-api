@@ -303,9 +303,10 @@ tr:hover {{ background: #f9f9f9; }}
 </tbody>
 </table>
 
-<h2>混合処方 (計量混合) 集計</h2>
+<h2>混合処方 (外用剤の計量混合) 集計</h2>
+<p style="color:#64748b;font-size:13px;">record 3 field 5 が「混合」の RP + 外用剤 (M/N/Q/X/U/P) の組合せのみ集計。MIX 量 = 同 RP 内の外用剤 総処方量の合計。</p>
 <table>
-<thead><tr><th class="num">件数</th><th>混合された薬剤の組合せ</th></tr></thead>
+<thead><tr><th class="num">件数</th><th>混合された薬剤の組合せ</th><th class="num">MIX量 平均</th><th class="num">最小</th><th class="num">最大</th></tr></thead>
 <tbody>
 {mix_combos}
 </tbody>
@@ -391,25 +392,37 @@ def dashboard(
     form_external = form_summary.get("外用", 0)
     form_other = form_summary.get("その他", 0)
 
-    # 混合処方の薬剤組合せ集計 (同じ prescription で is_mixed RP の drug をまとめて)
+    # 混合処方の薬剤組合せ集計 (外用のみ、MIX 量 = 同 RP の quantity 合計)
     combos_data = conn.execute(
         """
-        SELECT combo, COUNT(*) as n FROM (
-          SELECT GROUP_CONCAT(d.name, ' + ') AS combo
+        SELECT combo, COUNT(*) as n,
+               AVG(mix_qty) AS avg_qty,
+               MIN(mix_qty) AS min_qty,
+               MAX(mix_qty) AS max_qty,
+               unit
+        FROM (
+          SELECT GROUP_CONCAT(d.name, ' + ') AS combo,
+                 SUM(COALESCE(d.quantity, 0)) AS mix_qty,
+                 MAX(d.unit) AS unit
           FROM rps r
           JOIN drugs d ON d.prescription_id = r.prescription_id AND d.rp_no = r.rp_no
-          WHERE r.is_mixed = 1 AND d.name IS NOT NULL
+          WHERE r.is_mixed = 1 AND d.name IS NOT NULL AND d.form = '外用'
           GROUP BY r.id
         )
-        GROUP BY combo
-        ORDER BY n DESC
+        WHERE combo IS NOT NULL
+        GROUP BY combo, unit
+        ORDER BY n DESC, avg_qty DESC
         LIMIT 30
         """
     ).fetchall()
     mix_combos_html = "\n".join(
-        f'<tr><td class="num">{r["n"]}</td><td>{_h(r["combo"])}</td></tr>'
+        f'<tr><td class="num">{r["n"]}</td>'
+        f'<td>{_h(r["combo"])}</td>'
+        f'<td class="num">{(r["avg_qty"] or 0):.1f} {_h(r["unit"] or "")}</td>'
+        f'<td class="num">{(r["min_qty"] or 0):.1f}</td>'
+        f'<td class="num">{(r["max_qty"] or 0):.1f}</td></tr>'
         for r in combos_data
-    ) or '<tr><td colspan="2">(データなし — 新クライアントから RP 情報が届き次第表示)</td></tr>'
+    ) or '<tr><td colspan="5">(データなし — 新クライアントから RP 情報 (is_mixed) が届き次第表示)</td></tr>'
 
     mix_total = conn.execute(
         "SELECT COUNT(DISTINCT prescription_id) FROM fees WHERE is_mix_flag = 1"
