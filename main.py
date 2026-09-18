@@ -457,20 +457,53 @@ def dashboard(
            ORDER BY n DESC, qty DESC LIMIT 50"""
     ).fetchall()
 
-    def _detailed_form(yj_code: str | None, usage_cat: str | None, client_form: str | None) -> tuple[str, str]:
+    # 薬品名からの 剤形 キーワード判定 (順序が重要 - 長いキーワード優先)
+    _FORM_KEYWORDS = [
+        ("錠剤", ["錠"]),
+        ("カプセル", ["カプセル"]),
+        ("散剤", ["散", "末"]),
+        ("顆粒", ["顆粒", "細粒"]),
+        ("シロップ", ["シロップ", "ドライシロップ"]),
+        ("内用液", ["内服液", "経口液"]),
+        ("軟膏", ["軟膏"]),
+        ("クリーム", ["クリーム"]),
+        ("ローション", ["ローション"]),
+        ("ゲル", ["ゲル"]),
+        ("スプレー", ["スプレー", "エアゾール", "エアロゾル"]),
+        ("貼付剤", ["貼付", "テープ", "パッチ", "パップ", "湿布"]),
+        ("坐剤", ["坐剤", "坐薬", "座薬"]),
+        ("点眼液", ["点眼"]),
+        ("点鼻剤", ["点鼻"]),
+        ("点耳液", ["点耳"]),
+        ("含嗽剤", ["うがい", "含嗽"]),
+        ("うがい薬", ["うがい"]),
+        ("皮膚基剤", ["ワセリン", "プロペト"]),
+        ("注射剤", ["注射", "アンプル", "バイアル", "注"]),
+        ("キット", ["キット"]),
+    ]
+
+    def _detect_form_from_name(name: str | None) -> str | None:
+        if not name:
+            return None
+        for form_name, keywords in _FORM_KEYWORDS:
+            for kw in keywords:
+                if kw in name:
+                    return form_name
+        return None
+
+    def _detailed_form(yj_code: str | None, drug_name: str | None, client_form: str | None) -> tuple[str, str]:
         """(category, 詳細剤形) を返す。category は badge 色に使う。
 
-        判別優先順位 (マスタ usage_category は使わない):
-        1. YJ 5-7桁 の投与経路 (001-399=内用 400-699=注射 700-999=外用)
-        2. クライアント側 form
+        判別優先順位:
+        1. 薬品名からのキーワード判定 (最も信頼できる)
+        2. YJ 5-7桁 投与経路 + 8桁目 letter mapping (フォールバック)
         """
-        if not yj_code or len(yj_code) < 8:
-            return ("other", client_form or "?")
-        letter = yj_code[7]
+        # 1. 名前から剤形
+        name_form = _detect_form_from_name(drug_name)
 
+        # カテゴリ判定 (badge 色用): YJ 5-7桁 → client form
         usage_cat = None
-        # 優先 1: YJ 5-7 桁 (Python index 4-6) の投与経路
-        if len(yj_code) >= 7:
+        if yj_code and len(yj_code) >= 7:
             route_code = yj_code[4:7]
             if route_code.isdigit():
                 n = int(route_code)
@@ -480,7 +513,6 @@ def dashboard(
                     usage_cat = "4"
                 elif 700 <= n <= 999:
                     usage_cat = "6"
-        # 優先 2: client form fallback
         if usage_cat is None:
             if client_form == "内用" or client_form == "内服":
                 usage_cat = "1"
@@ -488,48 +520,29 @@ def dashboard(
                 usage_cat = "4"
             elif client_form == "外用":
                 usage_cat = "6"
-            else:
-                return ("other", client_form or "?")
 
-        if usage_cat == "1":  # 内用
-            if letter in "ABCDE":
-                return ("in", "散剤")
-            elif letter in "FGHIJKL":
-                return ("in", "錠剤")
-            elif letter in "MNOP":
-                return ("in", "液剤")
-            else:
-                return ("in", "内用その他")
-        elif usage_cat == "4":  # 注射
-            if letter in "ABCHJKQ":
-                return ("inj", "注射液")
-            elif letter in "DEFLMNR":
-                return ("inj", "注射用散剤")
-            elif letter in "GPS":
-                return ("inj", "キット類")
-            else:
-                return ("inj", "注射その他")
-        elif usage_cat == "6":  # 外用
-            if letter in "ABCDEFG":
-                return ("ext", "軟膏・クリーム等")
-            elif letter in "HJK":
-                return ("ext", "経口用剤")
-            elif letter in "LMNPQR":
-                return ("ext", "挿入/眼耳鼻")
-            elif letter == "S":
-                return ("ext", "皮膚塗布剤")
-            elif letter == "T":
-                return ("ext", "貼付剤")
-            elif letter == "U":
-                return ("ext", "診断剤")
-            elif letter == "X":
-                return ("ext", "外用注射")
-            else:
-                return ("ext", "外用その他")
-        return ("other", "?")
+        cat = {"1": "in", "4": "inj", "6": "ext"}.get(usage_cat or "", "other")
 
-    def _form_badge_detailed(yj_code, usage_cat, client_form):
-        cat, label = _detailed_form(yj_code, usage_cat, client_form)
+        if name_form:
+            return (cat, name_form)
+
+        # フォールバック: 8桁目 letter mapping
+        if not yj_code or len(yj_code) < 8 or usage_cat is None:
+            return (cat, client_form or "?")
+        letter = yj_code[7]
+        if usage_cat == "1":
+            if letter in "ABCDE": return (cat, "散剤")
+            if letter in "FGHIJKL": return (cat, "錠剤")
+            if letter in "MNOP": return (cat, "液剤")
+            return (cat, "内用その他")
+        elif usage_cat == "4":
+            return (cat, "注射剤")
+        elif usage_cat == "6":
+            return (cat, "外用その他")
+        return (cat, "?")
+
+    def _form_badge_detailed(yj_code, drug_name, client_form):
+        cat, label = _detailed_form(yj_code, drug_name, client_form)
         cls = f"badge-{cat}"
         return f'<span class="badge {cls}">{label}</span>'
 
@@ -546,7 +559,7 @@ def dashboard(
         else:
             qty_display = '<span class="generic">旧データ (要 .txt 再来)</span>'
         return (
-            f'<tr><td>{_form_badge_detailed(r["yj_code"], r["usage_category"], r["client_form"])}</td>'
+            f'<tr><td>{_form_badge_detailed(r["yj_code"], r["drug_name"], r["client_form"])}</td>'
             f'<td>{_h(r["yj_code"])}</td>'
             f'<td>{_h(r["drug_name"])}{generic}</td>'
             f'<td class="num">{r["n"]}</td>'
