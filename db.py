@@ -104,6 +104,22 @@ def init_db(conn: sqlite3.Connection) -> None:
           valid_to TEXT        -- CSV col 62
         );
 
+        -- 薬品マスタ (厚労省 y_ALL*.csv から取り込み)
+        CREATE TABLE IF NOT EXISTS drug_master (
+          yj_code TEXT PRIMARY KEY,
+          rece_code TEXT,      -- レセ電コード (col 2)
+          name TEXT,           -- 薬品名 (col 4)
+          name_kana TEXT,      -- カナ名 (col 6)
+          unit TEXT,           -- 単位 (col 9)
+          unit_price REAL,     -- 薬価 (col 11)
+          generic_code TEXT,   -- 一般名コード (col 37)
+          generic_name TEXT,   -- 一般名 (col 38)
+          valid_from TEXT,
+          valid_to TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_drug_master_rece ON drug_master(rece_code);
+        CREATE INDEX IF NOT EXISTS idx_drug_master_generic ON drug_master(generic_code);
+
         -- record 6 基本料 (剤ごとの 調剤料 + 薬剤料単価 × 数量 = 合計)
         CREATE TABLE IF NOT EXISTS drug_pricings (
           id INTEGER PRIMARY KEY AUTOINCREMENT,

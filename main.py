@@ -308,9 +308,10 @@ tr:hover {{ background: #f9f9f9; }}
 .badge-in {{ background: #fef3c7; color: #92400e; }}
 .badge-ext {{ background: #dbeafe; color: #1e40af; }}
 .badge-other {{ background: #e5e7eb; color: #4b5563; }}
+.generic {{ color: #64748b; font-size: 11px; }}
 </style>
 <table>
-<thead><tr><th>剤形</th><th>YJコード</th><th>薬品名</th><th class="num">回数</th><th class="num">総数量</th><th>単位</th></tr></thead>
+<thead><tr><th>剤形</th><th>YJコード</th><th>薬品名 / 一般名</th><th class="num">回数</th><th class="num">総数量</th><th>単位</th><th class="num">薬価</th></tr></thead>
 <tbody>
 {drug_rows}
 </tbody>
@@ -384,8 +385,18 @@ def dashboard(
     drug_kinds = conn.execute("SELECT COUNT(DISTINCT yj_code) FROM drugs WHERE yj_code IS NOT NULL").fetchone()[0]
 
     drug_data = conn.execute(
-        """SELECT yj_code, name, unit, form, COUNT(*) AS n, SUM(quantity) AS qty
-           FROM drugs GROUP BY yj_code, name, unit, form ORDER BY n DESC, qty DESC LIMIT 50"""
+        """SELECT d.yj_code,
+                  COALESCE(dm.name, d.name) AS drug_name,
+                  COALESCE(dm.unit, d.unit) AS drug_unit,
+                  d.form,
+                  dm.unit_price AS master_price,
+                  dm.generic_name,
+                  COUNT(*) AS n,
+                  SUM(d.quantity) AS qty
+           FROM drugs d
+           LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
+           GROUP BY d.yj_code, drug_name, drug_unit, d.form, dm.unit_price, dm.generic_name
+           ORDER BY n DESC, qty DESC LIMIT 50"""
     ).fetchall()
 
     def _form_badge(form):
@@ -395,13 +406,19 @@ def dashboard(
             return '<span class="badge badge-ext">外用</span>'
         return '<span class="badge badge-other">その他</span>'
 
-    drug_rows_html = "\n".join(
-        f'<tr><td>{_form_badge(r["form"])}</td>'
-        f'<td>{_h(r["yj_code"])}</td><td>{_h(r["name"])}</td>'
-        f'<td class="num">{r["n"]}</td><td class="num">{(r["qty"] or 0):.2f}</td>'
-        f'<td>{_h(r["unit"])}</td></tr>'
-        for r in drug_data
-    ) or '<tr><td colspan="6">(データなし)</td></tr>'
+    def _drug_row(r):
+        generic = f'<div class="generic">{_h(r["generic_name"])}</div>' if r["generic_name"] else ""
+        price = f'{r["master_price"]:.2f} 円' if r["master_price"] else ""
+        return (
+            f'<tr><td>{_form_badge(r["form"])}</td>'
+            f'<td>{_h(r["yj_code"])}</td>'
+            f'<td>{_h(r["drug_name"])}{generic}</td>'
+            f'<td class="num">{r["n"]}</td>'
+            f'<td class="num">{(r["qty"] or 0):.2f}</td>'
+            f'<td>{_h(r["drug_unit"])}</td>'
+            f'<td class="num">{price}</td></tr>'
+        )
+    drug_rows_html = "\n".join(_drug_row(r) for r in drug_data) or '<tr><td colspan="7">(データなし)</td></tr>'
 
     # 基本料 (record 6 基本料バリアント) の累計
     dp_agg = conn.execute(
