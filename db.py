@@ -90,6 +90,17 @@ def init_db(conn: sqlite3.Connection) -> None:
           FOREIGN KEY (prescription_id) REFERENCES prescriptions(id)
         );
         CREATE INDEX IF NOT EXISTS idx_rps_mixed ON rps(is_mixed);
+
+        -- 加算・料金 マスタ (厚労省 m*.csv から取り込み)
+        CREATE TABLE IF NOT EXISTS fee_master (
+          code TEXT PRIMARY KEY,
+          name TEXT,
+          name_kana TEXT,
+          points INTEGER,      -- CSV col 11 (実点数 = points/100)
+          category_code TEXT,  -- CSV col 3
+          valid_from TEXT,     -- CSV col 61
+          valid_to TEXT        -- CSV col 62
+        );
         """
     )
     conn.commit()

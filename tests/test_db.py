@@ -38,7 +38,7 @@ def test_init_db_is_idempotent(tmp_path):
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
     ).fetchall()
-    assert len(rows) == 4  # prescriptions, drugs, fees, rps
+    assert len(rows) == 5  # prescriptions, drugs, fees, rps, fee_master
 
 
 def test_connect_creates_parent_dir(tmp_path):

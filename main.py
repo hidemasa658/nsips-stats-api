@@ -455,20 +455,31 @@ def dashboard(
         for r in mix_data
     ) or '<tr><td colspan="2">(該当なし)</td></tr>'
 
-    # 加算・料金 累計 (name/code が平文で入っているものだけ集計)
+    # 加算・料金 累計 (fee_master と JOIN、マスタ名/点数優先)
     fee_data = conn.execute(
-        """SELECT fee_type, code, name, SUM(count) AS total_count, SUM(points) AS total_points
-           FROM fees WHERE name IS NOT NULL
-           GROUP BY fee_type, code, name
+        """SELECT
+             f.fee_type,
+             f.code,
+             COALESCE(m.name, f.name) AS display_name,
+             m.points AS master_points,
+             SUM(COALESCE(f.count, 1)) AS total_count,
+             SUM(COALESCE(f.count, 1) * COALESCE(m.points, f.points, 0)) AS total_points
+           FROM fees f
+           LEFT JOIN fee_master m ON f.code = m.code
+           WHERE f.code IS NOT NULL
+           GROUP BY f.fee_type, f.code, display_name, master_points
            ORDER BY total_count DESC, total_points DESC"""
     ).fetchall()
-    fee_rows_html = "\n".join(
-        f'<tr><td>{_h(r["fee_type"])}</td><td>{_h(r["code"])}</td>'
-        f'<td>{_h(r["name"])}</td>'
-        f'<td class="num">{r["total_count"] or 0}</td>'
-        f'<td class="num">{r["total_points"] or 0}</td></tr>'
-        for r in fee_data
-    ) or '<tr><td colspan="5">(データなし — 加算情報の暗号化フォーマット変更後の新規受入から表示されます)</td></tr>'
+    def _fee_row(r):
+        master_pts = r["master_points"]
+        pts_hint = f' <span style="color:#64748b;font-size:11px;">({master_pts}点/回)</span>' if master_pts is not None else ""
+        return (
+            f'<tr><td>{_h(r["fee_type"])}</td><td>{_h(r["code"])}</td>'
+            f'<td>{_h(r["display_name"])}{pts_hint}</td>'
+            f'<td class="num">{r["total_count"] or 0}</td>'
+            f'<td class="num">{r["total_points"] or 0}</td></tr>'
+        )
+    fee_rows_html = "\n".join(_fee_row(r) for r in fee_data) or '<tr><td colspan="5">(データなし)</td></tr>'
 
     # 最新受入 生データ 20 件
     recent_data = conn.execute(
