@@ -364,6 +364,15 @@ tr:hover {{ background: #f9f9f9; }}
   </div>
 </div>
 
+<h2>成分別 累計 (YJ 1〜7 桁: 同一成分でまとめる)</h2>
+<p style="color:#64748b;font-size:12px;">同じ成分の 先発品・後発品・別剤形をまとめて集計。品目数 &gt; 1 は同じ成分の複数バリエーションが処方された = 後発切替検討や剤形選択の余地あり。</p>
+<table>
+<thead><tr><th>YJ (1-7)</th><th>成分 (代表薬品名 / 一般名)</th><th class="num">品目数</th><th class="num">調剤回数</th><th class="num">総数量</th></tr></thead>
+<tbody>
+{ingredient_rows}
+</tbody>
+</table>
+
 <h2>薬剤別累計 (調剤回数上位 50 品目)</h2>
 <style>
 .badge {{ display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }}
@@ -484,6 +493,30 @@ def dashboard(
             f'<td class="num">{price}</td></tr>'
         )
     drug_rows_html = "\n".join(_drug_row(r) for r in drug_data) or '<tr><td colspan="7">(データなし)</td></tr>'
+
+    # 成分別 累計 (YJ 1-7 桁)
+    ingredient_data = conn.execute(
+        """SELECT SUBSTR(d.yj_code, 1, 7) AS ingredient_code,
+                  MAX(COALESCE(dm.generic_name, dm.name, d.name)) AS repr_name,
+                  COUNT(DISTINCT d.yj_code) AS variant_count,
+                  COUNT(*) AS n,
+                  SUM(d.total_quantity) AS qty
+           FROM drugs d
+           LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
+           WHERE d.yj_code IS NOT NULL AND LENGTH(d.yj_code) >= 7
+           GROUP BY ingredient_code
+           ORDER BY n DESC, qty DESC LIMIT 30"""
+    ).fetchall()
+    ingredient_rows_html = "\n".join(
+        f'<tr><td>{_h(r["ingredient_code"])}</td>'
+        f'<td>{_h(r["repr_name"])}'
+        + (f' <span class="generic">({r["variant_count"]} 品目)</span>' if r["variant_count"] > 1 else "")
+        + f'</td>'
+        f'<td class="num">{r["variant_count"]}</td>'
+        f'<td class="num">{r["n"]}</td>'
+        f'<td class="num">{(r["qty"] or 0):.2f}</td></tr>'
+        for r in ingredient_data
+    ) or '<tr><td colspan="5">(データなし)</td></tr>'
 
     # 日別集計 (直近 30 日)
     daily_data = conn.execute(
@@ -691,6 +724,7 @@ def dashboard(
         form_other=form_other,
         daily_rows=daily_rows_html,
         monthly_rows=monthly_rows_html,
+        ingredient_rows=ingredient_rows_html,
         dp_total_dispensing=dp_total_dispensing,
         dp_total_drug_fee=dp_total_drug_fee,
         dp_count=dp_count,
