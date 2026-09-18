@@ -337,6 +337,28 @@ tr:hover {{ background: #f9f9f9; }}
   <div class="kpi"><div class="val">{dp_count:,}</div><div class="lbl">剤 (record 6 行数)</div></div>
 </div>
 
+<h2>期間別 集計</h2>
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+  <div>
+    <h3 style="font-size:14px;color:#475569;margin:8px 0;">日別 (直近 30 日)</h3>
+    <table style="font-size:12px;">
+      <thead><tr><th>日付</th><th class="num">件数</th><th class="num">点数</th><th class="num">負担金</th></tr></thead>
+      <tbody>
+      {daily_rows}
+      </tbody>
+    </table>
+  </div>
+  <div>
+    <h3 style="font-size:14px;color:#475569;margin:8px 0;">月別</h3>
+    <table style="font-size:12px;">
+      <thead><tr><th>月</th><th class="num">件数</th><th class="num">点数</th><th class="num">負担金</th></tr></thead>
+      <tbody>
+      {monthly_rows}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <h2>薬剤別累計 (調剤回数上位 50 品目)</h2>
 <style>
 .badge {{ display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }}
@@ -448,6 +470,42 @@ def dashboard(
             f'<td class="num">{price}</td></tr>'
         )
     drug_rows_html = "\n".join(_drug_row(r) for r in drug_data) or '<tr><td colspan="7">(データなし)</td></tr>'
+
+    # 日別集計 (直近 30 日)
+    daily_data = conn.execute(
+        """SELECT DATE(detected_at) AS d,
+                  COUNT(*) AS n,
+                  COALESCE(SUM(total_points), 0) AS pts,
+                  COALESCE(SUM(patient_copay), 0) AS cp
+           FROM prescriptions
+           GROUP BY DATE(detected_at)
+           ORDER BY d DESC LIMIT 30"""
+    ).fetchall()
+    daily_rows_html = "\n".join(
+        f'<tr><td>{_h(r["d"])}</td>'
+        f'<td class="num">{r["n"]}</td>'
+        f'<td class="num">{r["pts"]:,}</td>'
+        f'<td class="num">{r["cp"]:,}</td></tr>'
+        for r in daily_data
+    ) or '<tr><td colspan="4">(データなし)</td></tr>'
+
+    # 月別集計 (全期間)
+    monthly_data = conn.execute(
+        """SELECT SUBSTR(detected_at, 1, 7) AS m,
+                  COUNT(*) AS n,
+                  COALESCE(SUM(total_points), 0) AS pts,
+                  COALESCE(SUM(patient_copay), 0) AS cp
+           FROM prescriptions
+           GROUP BY SUBSTR(detected_at, 1, 7)
+           ORDER BY m DESC"""
+    ).fetchall()
+    monthly_rows_html = "\n".join(
+        f'<tr><td>{_h(r["m"])}</td>'
+        f'<td class="num">{r["n"]}</td>'
+        f'<td class="num">{r["pts"]:,}</td>'
+        f'<td class="num">{r["cp"]:,}</td></tr>'
+        for r in monthly_data
+    ) or '<tr><td colspan="4">(データなし)</td></tr>'
 
     # record 5 全体集計の累計 (経営指標)
     t_agg = conn.execute(
@@ -599,6 +657,8 @@ def dashboard(
         form_internal=form_internal,
         form_external=form_external,
         form_other=form_other,
+        daily_rows=daily_rows_html,
+        monthly_rows=monthly_rows_html,
         dp_total_dispensing=dp_total_dispensing,
         dp_total_drug_fee=dp_total_drug_fee,
         dp_count=dp_count,
