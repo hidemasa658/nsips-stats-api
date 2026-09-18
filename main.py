@@ -112,6 +112,19 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
             ),
         )
 
+    for dp in payload.drug_pricings:
+        conn.execute(
+            """
+            INSERT INTO drug_pricings
+              (prescription_id, seq, dispensing_fee, drug_fee_per_unit, quantity, total)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                presc_id, dp.seq, dp.dispensing_fee, dp.drug_fee_per_unit,
+                dp.quantity, dp.total,
+            ),
+        )
+
     for f in payload.fees:
         conn.execute(
             """
@@ -312,6 +325,14 @@ tr:hover {{ background: #f9f9f9; }}
 </tbody>
 </table>
 
+<h2>基本料 累計 (record 6 基本料バリアント)</h2>
+<div class="summary">
+  <div class="item"><span class="big">{dp_total_dispensing}</span><span class="label">調剤料 合計 (点)</span></div>
+  <div class="item"><span class="big">{dp_total_drug_fee}</span><span class="label">薬剤料 合計 (点)</span></div>
+  <div class="item"><span class="big">{dp_count}</span><span class="label">剤 (record 6 行数)</span></div>
+</div>
+<p style="color:#64748b;font-size:12px;">調剤料 = 剤ごとの調剤基本料。外用は3剤まで加算、4剤目以降は 0。薬剤料 = 薬剤料単価 × 数量。</p>
+
 <h2>各種加算・料金 累計</h2>
 <table>
 <thead><tr><th>種別</th><th>加算コード</th><th>加算名</th><th class="num">算定回数</th><th class="num">合計点数</th></tr></thead>
@@ -381,6 +402,18 @@ def dashboard(
         f'<td>{_h(r["unit"])}</td></tr>'
         for r in drug_data
     ) or '<tr><td colspan="6">(データなし)</td></tr>'
+
+    # 基本料 (record 6 基本料バリアント) の累計
+    dp_agg = conn.execute(
+        """SELECT
+             COALESCE(SUM(dispensing_fee), 0) AS total_dispensing,
+             COALESCE(SUM(drug_fee_per_unit * quantity), 0) AS total_drug_fee,
+             COUNT(*) AS n
+           FROM drug_pricings"""
+    ).fetchone()
+    dp_total_dispensing = dp_agg["total_dispensing"]
+    dp_total_drug_fee = dp_agg["total_drug_fee"]
+    dp_count = dp_agg["n"]
 
     # 剤形別 サマリー (件数)
     form_summary = dict(
@@ -508,6 +541,9 @@ def dashboard(
         form_internal=form_internal,
         form_external=form_external,
         form_other=form_other,
+        dp_total_dispensing=dp_total_dispensing,
+        dp_total_drug_fee=dp_total_drug_fee,
+        dp_count=dp_count,
         recent_rows=recent_rows_html,
         now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )

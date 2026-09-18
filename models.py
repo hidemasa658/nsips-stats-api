@@ -24,6 +24,14 @@ class RpIn(BaseModel):
     drug_count: int = 0
 
 
+class DrugPricingIn(BaseModel):
+    seq: str | None = None
+    dispensing_fee: int | None = None  # 調剤料
+    drug_fee_per_unit: int | None = None  # 薬剤料単価
+    quantity: int | None = None  # 数量
+    total: int | None = None  # 合計 (調剤料 + 薬剤料単価 × 数量)
+
+
 class FeeIn(BaseModel):
     fee_type: str | None = None
     code_enc: str | None = None
@@ -46,6 +54,7 @@ class IngestPayload(BaseModel):
     drugs: list[DrugIn] = []
     fees: list[FeeIn] = []
     rps: list[RpIn] = []
+    drug_pricings: list[DrugPricingIn] = []
 
 
 class IngestResponse(BaseModel):

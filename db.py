@@ -101,6 +101,18 @@ def init_db(conn: sqlite3.Connection) -> None:
           valid_from TEXT,     -- CSV col 61
           valid_to TEXT        -- CSV col 62
         );
+
+        -- record 6 基本料 (剤ごとの 調剤料 + 薬剤料単価 × 数量 = 合計)
+        CREATE TABLE IF NOT EXISTS drug_pricings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          prescription_id INTEGER NOT NULL,
+          seq TEXT,
+          dispensing_fee INTEGER,
+          drug_fee_per_unit INTEGER,
+          quantity INTEGER,
+          total INTEGER,
+          FOREIGN KEY (prescription_id) REFERENCES prescriptions(id)
+        );
         """
     )
     conn.commit()
