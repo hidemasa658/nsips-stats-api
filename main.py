@@ -460,18 +460,17 @@ def dashboard(
     def _detailed_form(yj_code: str | None, usage_cat: str | None, client_form: str | None) -> tuple[str, str]:
         """(category, 詳細剤形) を返す。category は badge 色に使う。
 
-        判別優先順位:
-        1. マスタ usage_category (1=内用 4=注射 6=外用)
-        2. YJ 5-7桁 の投与経路 (001-399=内用 400-699=注射 700-999=外用)
-        3. クライアント側 form
+        判別優先順位 (マスタ usage_category は使わない):
+        1. YJ 5-7桁 の投与経路 (001-399=内用 400-699=注射 700-999=外用)
+        2. クライアント側 form
         """
         if not yj_code or len(yj_code) < 8:
             return ("other", client_form or "?")
         letter = yj_code[7]
 
-        # 優先 1: master usage_category
-        # 優先 2: YJ 5-7 桁 (Python index 4-6) の投与経路
-        if usage_cat is None and len(yj_code) >= 7:
+        usage_cat = None
+        # 優先 1: YJ 5-7 桁 (Python index 4-6) の投与経路
+        if len(yj_code) >= 7:
             route_code = yj_code[4:7]
             if route_code.isdigit():
                 n = int(route_code)
@@ -481,7 +480,7 @@ def dashboard(
                     usage_cat = "4"
                 elif 700 <= n <= 999:
                     usage_cat = "6"
-        # 優先 3: client form fallback
+        # 優先 2: client form fallback
         if usage_cat is None:
             if client_form == "内用" or client_form == "内服":
                 usage_cat = "1"
@@ -647,22 +646,18 @@ def dashboard(
     dp_short_count = dp_agg["short_count"]
     dp_count = dp_agg["n"]
 
-    # 剤形別 サマリー (マスタ usage_category → YJ 5-7桁 → client form の順で優先)
+    # 剤形別 サマリー (YJ 5-7桁 で判別、フォールバックは client form)
     form_summary = dict(
         conn.execute(
             """SELECT
                  CASE
-                   WHEN dm.usage_category = '1' THEN '内用'
-                   WHEN dm.usage_category = '4' THEN '注射'
-                   WHEN dm.usage_category = '6' THEN '外用'
-                   WHEN dm.usage_category IS NULL AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 1 AND 399 THEN '内用'
-                   WHEN dm.usage_category IS NULL AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 400 AND 699 THEN '注射'
-                   WHEN dm.usage_category IS NULL AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 700 AND 999 THEN '外用'
+                   WHEN LENGTH(d.yj_code) >= 7 AND SUBSTR(d.yj_code, 5, 3) GLOB '[0-9][0-9][0-9]' AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 1 AND 399 THEN '内用'
+                   WHEN LENGTH(d.yj_code) >= 7 AND SUBSTR(d.yj_code, 5, 3) GLOB '[0-9][0-9][0-9]' AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 400 AND 699 THEN '注射'
+                   WHEN LENGTH(d.yj_code) >= 7 AND SUBSTR(d.yj_code, 5, 3) GLOB '[0-9][0-9][0-9]' AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 700 AND 999 THEN '外用'
                    ELSE COALESCE(d.form, 'その他')
                  END AS cat,
                  COUNT(*)
                FROM drugs d
-               LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
                GROUP BY cat"""
         ).fetchall()
     )
