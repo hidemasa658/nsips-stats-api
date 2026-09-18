@@ -9,3 +9,7 @@ venv/
 *.db-wal
 *.db-shm
 .DS_Store
+deploy/certs/*.key
+deploy/certs/*.crt
+deploy/certs/*.srl
+deploy/certs/*.csr
