@@ -76,6 +76,10 @@ def init_db(conn: sqlite3.Connection) -> None:
     dp_cols = [r[1] for r in conn.execute("PRAGMA table_info(drug_pricings)").fetchall()]
     if dp_cols and "internal_dispensing_fee" not in dp_cols:
         conn.execute("ALTER TABLE drug_pricings ADD COLUMN internal_dispensing_fee INTEGER")
+    # drug_master に usage_category (col 27)
+    dm_cols = [r[1] for r in conn.execute("PRAGMA table_info(drug_master)").fetchall()]
+    if dm_cols and "usage_category" not in dm_cols:
+        conn.execute("ALTER TABLE drug_master ADD COLUMN usage_category TEXT")
     # drugs: form 分類 + rp_no 平文
     drugs_cols = [r[1] for r in conn.execute("PRAGMA table_info(drugs)").fetchall()]
     if "form" not in drugs_cols:
@@ -123,6 +127,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           name_kana TEXT,      -- カナ名 (col 6)
           unit TEXT,           -- 単位 (col 9)
           unit_price REAL,     -- 薬価 (col 11)
+          usage_category TEXT, -- 用法区分 (col 27): 1=内用 4=注射 6=外用
           generic_code TEXT,   -- 一般名コード (col 37)
           generic_name TEXT,   -- 一般名 (col 38)
           valid_from TEXT,

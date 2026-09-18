@@ -56,6 +56,7 @@ def import_master(csv_path: Path, db_path: Path) -> int:
                 unit_price = float(row[11])
             except (ValueError, TypeError):
                 unit_price = None
+            usage_category = row[27] if len(row) > 27 else None  # 1=内用 4=注射 6=外用
             valid_from = row[30] if len(row) > 30 else None
             valid_to = row[31] if len(row) > 31 else None
             generic_code = row[37] if len(row) > 37 else None
@@ -64,10 +65,10 @@ def import_master(csv_path: Path, db_path: Path) -> int:
             conn.execute(
                 """INSERT OR REPLACE INTO drug_master
                    (yj_code, rece_code, name, name_kana, unit, unit_price,
-                    generic_code, generic_name, valid_from, valid_to)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    usage_category, generic_code, generic_name, valid_from, valid_to)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (yj_code, rece_code, name, name_kana, unit, unit_price,
-                 generic_code, generic_name, valid_from, valid_to),
+                 usage_category, generic_code, generic_name, valid_from, valid_to),
             )
             inserted += 1
 

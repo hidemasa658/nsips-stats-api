@@ -315,8 +315,9 @@ tr:hover {{ background: #f9f9f9; }}
 <div class="kpi-grid">
   <div class="kpi accent-purple"><div class="val">{prescription_count}</div><div class="lbl">総処方受入件数</div></div>
   <div class="kpi accent-purple"><div class="val">{drug_kinds}</div><div class="lbl">薬品種類</div></div>
-  <div class="kpi accent-orange"><div class="val">{form_internal}</div><div class="lbl">内服 (回数)</div></div>
+  <div class="kpi accent-orange"><div class="val">{form_internal}</div><div class="lbl">内用 (回数)</div></div>
   <div class="kpi accent-orange"><div class="val">{form_external}</div><div class="lbl">外用 (回数)</div></div>
+  <div class="kpi accent-orange"><div class="val">{form_injection}</div><div class="lbl">注射 (回数)</div></div>
   <div class="kpi accent-orange"><div class="val">{form_other}</div><div class="lbl">その他 (回数)</div></div>
   <div class="kpi accent-orange"><div class="val">{mix_total}</div><div class="lbl">計量混合加算 件数</div></div>
 </div>
@@ -368,6 +369,7 @@ tr:hover {{ background: #f9f9f9; }}
 .badge {{ display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }}
 .badge-in {{ background: #fef3c7; color: #92400e; }}
 .badge-ext {{ background: #dbeafe; color: #1e40af; }}
+.badge-inj {{ background: #fce7f3; color: #9f1239; }}
 .badge-other {{ background: #e5e7eb; color: #4b5563; }}
 .generic {{ color: #64748b; font-size: 11px; }}
 </style>
@@ -433,7 +435,13 @@ def dashboard(
         """SELECT d.yj_code,
                   COALESCE(dm.name, d.name) AS drug_name,
                   COALESCE(dm.unit, d.unit) AS drug_unit,
-                  d.form,
+                  -- マスタの usage_category (1=内用 4=注射 6=外用) を優先、無ければクライアント側の form
+                  CASE
+                    WHEN dm.usage_category = '1' THEN '内用'
+                    WHEN dm.usage_category = '4' THEN '注射'
+                    WHEN dm.usage_category = '6' THEN '外用'
+                    ELSE d.form
+                  END AS drug_form,
                   dm.unit_price AS master_price,
                   dm.generic_name,
                   COUNT(*) AS n,
@@ -441,15 +449,17 @@ def dashboard(
                   SUM(CASE WHEN d.total_quantity IS NOT NULL THEN 1 ELSE 0 END) AS valid_n
            FROM drugs d
            LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
-           GROUP BY d.yj_code, drug_name, drug_unit, d.form, dm.unit_price, dm.generic_name
+           GROUP BY d.yj_code, drug_name, drug_unit, drug_form, dm.unit_price, dm.generic_name
            ORDER BY n DESC, qty DESC LIMIT 50"""
     ).fetchall()
 
     def _form_badge(form):
-        if form == "内服":
-            return '<span class="badge badge-in">内服</span>'
+        if form == "内用" or form == "内服":
+            return '<span class="badge badge-in">内用</span>'
         if form == "外用":
             return '<span class="badge badge-ext">外用</span>'
+        if form == "注射":
+            return '<span class="badge badge-inj">注射</span>'
         return '<span class="badge badge-other">その他</span>'
 
     def _drug_row(r):
@@ -465,7 +475,7 @@ def dashboard(
         else:
             qty_display = '<span class="generic">旧データ (要 .txt 再来)</span>'
         return (
-            f'<tr><td>{_form_badge(r["form"])}</td>'
+            f'<tr><td>{_form_badge(r["drug_form"])}</td>'
             f'<td>{_h(r["yj_code"])}</td>'
             f'<td>{_h(r["drug_name"])}{generic}</td>'
             f'<td class="num">{r["n"]}</td>'
@@ -541,14 +551,25 @@ def dashboard(
     dp_short_count = dp_agg["short_count"]
     dp_count = dp_agg["n"]
 
-    # 剤形別 サマリー (件数)
+    # 剤形別 サマリー (マスタ usage_category 優先)
     form_summary = dict(
         conn.execute(
-            "SELECT COALESCE(form, 'その他'), COUNT(*) FROM drugs GROUP BY form"
+            """SELECT
+                 CASE
+                   WHEN dm.usage_category = '1' THEN '内用'
+                   WHEN dm.usage_category = '4' THEN '注射'
+                   WHEN dm.usage_category = '6' THEN '外用'
+                   ELSE COALESCE(d.form, 'その他')
+                 END AS cat,
+                 COUNT(*)
+               FROM drugs d
+               LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
+               GROUP BY cat"""
         ).fetchall()
     )
-    form_internal = form_summary.get("内服", 0)
+    form_internal = form_summary.get("内用", 0) + form_summary.get("内服", 0)
     form_external = form_summary.get("外用", 0)
+    form_injection = form_summary.get("注射", 0)
     form_other = form_summary.get("その他", 0)
 
     # 混合処方: combo × 量 で集計 → Python で combo ごとに内訳を組立
@@ -666,6 +687,7 @@ def dashboard(
         mix_combos=mix_combos_html,
         form_internal=form_internal,
         form_external=form_external,
+        form_injection=form_injection,
         form_other=form_other,
         daily_rows=daily_rows_html,
         monthly_rows=monthly_rows_html,
