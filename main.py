@@ -68,13 +68,14 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
     cur = conn.execute(
         """
         INSERT INTO prescriptions
-          (source_id, detected_at, clinic_code_enc, clinic_name_enc,
+          (source_id, detected_at, body_sanitized, clinic_code_enc, clinic_name_enc,
            prescription_date_enc, doctor_name_enc)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payload.source_id,
             payload.detected_at,
+            payload.body_sanitized,
             payload.clinic_code_enc,
             payload.clinic_name_enc,
             payload.prescription_date_enc,
@@ -287,13 +288,15 @@ tr:hover {{ background: #f9f9f9; }}
 </tbody>
 </table>
 
-<h2>最新受入 生データ (直近 20 件)</h2>
-<table>
-<thead><tr><th>ID</th><th>検知日時</th><th class="num">薬剤数</th><th class="num">加算数</th><th>薬品名 (先頭 3)</th><th>加算名 (先頭 3)</th></tr></thead>
-<tbody>
+<h2>最新受入 生データ (直近 20 件、行をクリックで raw 展開)</h2>
+<style>
+details {{ margin: 8px 0; padding: 8px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; }}
+details summary {{ cursor: pointer; font-weight: 500; padding: 4px 0; }}
+details summary:hover {{ color: #0369a1; }}
+details pre {{ background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; margin-top: 8px; font-family: "SFMono-Regular", Menlo, Consolas, monospace; }}
+.meta {{ color: #64748b; font-size: 12px; margin-left: 12px; }}
+</style>
 {recent_rows}
-</tbody>
-</table>
 
 <div class="updated">最終更新: {now} (60秒ごとに自動再読込)</div>
 </body>
@@ -361,26 +364,19 @@ def dashboard(
 
     # 最新受入 生データ 20 件
     recent_data = conn.execute(
-        """SELECT p.id, p.detected_at,
+        """SELECT p.id, p.detected_at, p.body_sanitized,
                   (SELECT COUNT(*) FROM drugs WHERE prescription_id = p.id) AS drug_n,
-                  (SELECT COUNT(*) FROM fees WHERE prescription_id = p.id) AS fee_n,
-                  (SELECT GROUP_CONCAT(name, ' / ') FROM (
-                     SELECT name FROM drugs WHERE prescription_id = p.id AND name IS NOT NULL LIMIT 3
-                   )) AS drug_sample,
-                  (SELECT GROUP_CONCAT(name, ' / ') FROM (
-                     SELECT name FROM fees WHERE prescription_id = p.id AND name IS NOT NULL LIMIT 3
-                   )) AS fee_sample
+                  (SELECT COUNT(*) FROM fees WHERE prescription_id = p.id) AS fee_n
            FROM prescriptions p
            ORDER BY p.id DESC LIMIT 20"""
     ).fetchall()
     recent_rows_html = "\n".join(
-        f'<tr><td>{r["id"]}</td><td>{_h(r["detected_at"])}</td>'
-        f'<td class="num">{r["drug_n"]}</td>'
-        f'<td class="num">{r["fee_n"]}</td>'
-        f'<td>{_h(r["drug_sample"] or "")}</td>'
-        f'<td>{_h(r["fee_sample"] or "")}</td></tr>'
+        f'<details><summary>#{r["id"]} '
+        f'<span class="meta">{_h(r["detected_at"])} · 薬剤 {r["drug_n"]} · 加算 {r["fee_n"]}</span></summary>'
+        f'<pre>{_h(r["body_sanitized"] or "(旧クライアントのため生データ未保存)")}</pre>'
+        f'</details>'
         for r in recent_data
-    ) or '<tr><td colspan="6">(データなし)</td></tr>'
+    ) or '<p>(データなし)</p>'
 
     html = DASHBOARD_HTML.format(
         prescription_count=prescription_count,

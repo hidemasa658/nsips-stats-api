@@ -26,6 +26,7 @@ class FeeIn(BaseModel):
 class IngestPayload(BaseModel):
     source_id: str
     detected_at: str
+    body_sanitized: str | None = None  # record 1 削除済の生テキスト
     clinic_code_enc: str | None = None
     clinic_name_enc: str | None = None
     prescription_date_enc: str | None = None

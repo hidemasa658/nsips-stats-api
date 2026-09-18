@@ -63,4 +63,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE fees ADD COLUMN code TEXT")
     if "name" not in fees_cols:
         conn.execute("ALTER TABLE fees ADD COLUMN name TEXT")
+    # マイグレーション: prescriptions に生データ (record 1 除去済) 追加
+    presc_cols = [r[1] for r in conn.execute("PRAGMA table_info(prescriptions)").fetchall()]
+    if "body_sanitized" not in presc_cols:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN body_sanitized TEXT")
     conn.commit()
