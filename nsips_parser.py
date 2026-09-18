@@ -8,14 +8,33 @@ _FORM_EXTERNAL = set("MNQXUP")      # 外用系: 軟膏/クリーム/ローシ�
 
 
 def classify_form(yj_code: str | None) -> str:
-    """YJ コード 8 文字目から 剤形分類 (内服/外用/その他) を返す。"""
+    """YJ コードから 剤形分類 (内用/外用/注射/その他) を返す。
+
+    判別優先順位:
+    1. YJ 5-7桁 投与経路 (001-399=内用 400-699=注射 700-999=外用) — マスタ規則
+    2. YJ 8文字目 letter mapping — fallback
+    """
     if not yj_code or len(yj_code) < 8:
         return "その他"
+
+    # 優先: 5-7桁 投与経路
+    if len(yj_code) >= 7:
+        route_code = yj_code[4:7]
+        if route_code.isdigit():
+            n = int(route_code)
+            if 1 <= n <= 399:
+                return "内用"
+            elif 400 <= n <= 699:
+                return "注射"
+            elif 700 <= n <= 999:
+                return "外用"
+
+    # フォールバック: 8桁目
     letter = yj_code[7]
     if letter in _FORM_EXTERNAL:
         return "外用"
     if letter in _FORM_INTERNAL:
-        return "内服"
+        return "内用"
     return "その他"
 
 
@@ -221,10 +240,10 @@ def parse_nsips(body: str) -> dict:
     for rp in rps_by_no.values():
         result["rps"].append(rp)
 
-    # 内服の総数量 = 1回量 × 回数/日 × 日数
+    # 内用の総数量 = 1回量 × 回数/日 × 日数
     # 外用は quantity (position 16) が既に総処方量なのでそのまま
     for d in result["drugs"]:
-        if d.get("form") == "内服":
+        if d.get("form") in ("内用", "内服"):
             rp = rps_by_no.get(d.get("rp_no") or "")
             if rp and rp.get("times_per_day") and rp.get("days"):
                 try:
