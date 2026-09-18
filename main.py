@@ -299,29 +299,42 @@ tr:hover {{ background: #f9f9f9; }}
 <body>
 <h1>💊 nsips-stats ダッシュボード</h1>
 
-<div class="summary">
-  <div class="item"><span class="big">{prescription_count}</span><span class="label">総処方受入件数</span></div>
-  <div class="item"><span class="big">{drug_kinds}</span><span class="label">薬品種類</span></div>
-  <div class="item"><span class="big">{mix_total}</span><span class="label">計量混合加算件数</span></div>
+<style>
+.kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 16px 0; }}
+.kpi {{ background: #f8fafc; border-left: 3px solid #3b82f6; padding: 10px 14px; border-radius: 6px; }}
+.kpi.accent-orange {{ border-left-color: #f59e0b; background: #fffbeb; }}
+.kpi.accent-green {{ border-left-color: #10b981; background: #ecfdf5; }}
+.kpi.accent-purple {{ border-left-color: #8b5cf6; background: #f5f3ff; }}
+.kpi .val {{ font-size: 22px; font-weight: bold; color: #0f172a; font-variant-numeric: tabular-nums; }}
+.kpi .lbl {{ font-size: 11px; color: #475569; margin-top: 2px; }}
+.kpi-section-title {{ font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 20px 0 4px; padding-left: 4px; }}
+</style>
+
+<div class="kpi-section-title">基本</div>
+<div class="kpi-grid">
+  <div class="kpi accent-purple"><div class="val">{prescription_count}</div><div class="lbl">総処方受入件数</div></div>
+  <div class="kpi accent-purple"><div class="val">{drug_kinds}</div><div class="lbl">薬品種類</div></div>
+  <div class="kpi accent-orange"><div class="val">{form_internal}</div><div class="lbl">内服 (回数)</div></div>
+  <div class="kpi accent-orange"><div class="val">{form_external}</div><div class="lbl">外用 (回数)</div></div>
+  <div class="kpi accent-orange"><div class="val">{form_other}</div><div class="lbl">その他 (回数)</div></div>
+  <div class="kpi accent-orange"><div class="val">{mix_total}</div><div class="lbl">計量混合加算 件数</div></div>
 </div>
 
-<h2>経営集計 (record 5)</h2>
-<div class="summary">
-  <div class="item"><span class="big">{t_total_points:,}</span><span class="label">総請求点数</span></div>
-  <div class="item"><span class="big">{t_patient_copay:,}</span><span class="label">総患者負担金 (円)</span></div>
-  <div class="item"><span class="big">{t_dispensing_base:,}</span><span class="label">調剤基本料 累計</span></div>
-</div>
-<div class="summary">
-  <div class="item"><span class="big">{t_night_holiday:,}</span><span class="label">夜間・休日等加算 累計</span></div>
-  <div class="item"><span class="big">{t_management:,}</span><span class="label">薬学管理料 累計</span></div>
-  <div class="item"><span class="big">{t_long_prescription:,}</span><span class="label">長期処方関連 累計</span></div>
+<div class="kpi-section-title">経営集計 (record 5)</div>
+<div class="kpi-grid">
+  <div class="kpi accent-green"><div class="val">{t_total_points:,}</div><div class="lbl">総請求点数</div></div>
+  <div class="kpi accent-green"><div class="val">{t_patient_copay:,}</div><div class="lbl">総患者負担金 (円)</div></div>
+  <div class="kpi"><div class="val">{t_dispensing_base:,}</div><div class="lbl">調剤基本料</div></div>
+  <div class="kpi"><div class="val">{t_night_holiday:,}</div><div class="lbl">夜間・休日等加算</div></div>
+  <div class="kpi"><div class="val">{t_management:,}</div><div class="lbl">薬学管理料</div></div>
+  <div class="kpi"><div class="val">{t_long_prescription:,}</div><div class="lbl">長期処方関連</div></div>
 </div>
 
-<h2>剤形別 集計</h2>
-<div class="summary">
-  <div class="item"><span class="big">{form_internal}</span><span class="label">内服 品目 (回数)</span></div>
-  <div class="item"><span class="big">{form_external}</span><span class="label">外用 品目 (回数)</span></div>
-  <div class="item"><span class="big">{form_other}</span><span class="label">その他 品目 (回数)</span></div>
+<div class="kpi-section-title">基本料 累計 (record 6 基本料バリアント)</div>
+<div class="kpi-grid">
+  <div class="kpi"><div class="val">{dp_total_dispensing:,}</div><div class="lbl">調剤料 合計 (点)</div></div>
+  <div class="kpi"><div class="val">{dp_total_drug_fee:,}</div><div class="lbl">薬剤料 合計 (点)</div></div>
+  <div class="kpi"><div class="val">{dp_count:,}</div><div class="lbl">剤 (record 6 行数)</div></div>
 </div>
 
 <h2>薬剤別累計 (調剤回数上位 50 品目)</h2>
@@ -348,27 +361,11 @@ tr:hover {{ background: #f9f9f9; }}
 </tbody>
 </table>
 
-<h2>基本料 累計 (record 6 基本料バリアント)</h2>
-<div class="summary">
-  <div class="item"><span class="big">{dp_total_dispensing}</span><span class="label">調剤料 合計 (点)</span></div>
-  <div class="item"><span class="big">{dp_total_drug_fee}</span><span class="label">薬剤料 合計 (点)</span></div>
-  <div class="item"><span class="big">{dp_count}</span><span class="label">剤 (record 6 行数)</span></div>
-</div>
-<p style="color:#64748b;font-size:12px;">調剤料 = 剤ごとの調剤基本料。外用は3剤まで加算、4剤目以降は 0。薬剤料 = 薬剤料単価 × 数量。</p>
-
 <h2>各種加算・料金 累計</h2>
 <table>
 <thead><tr><th>種別</th><th>加算コード</th><th>加算名</th><th class="num">算定回数</th><th class="num">合計点数</th></tr></thead>
 <tbody>
 {fee_rows}
-</tbody>
-</table>
-
-<h2>計量混合加算 内訳</h2>
-<table>
-<thead><tr><th>混合品目数</th><th class="num">該当件数</th></tr></thead>
-<tbody>
-{mix_rows}
 </tbody>
 </table>
 
@@ -598,7 +595,6 @@ def dashboard(
         drug_rows=drug_rows_html,
         fee_rows=fee_rows_html,
         mix_total=mix_total,
-        mix_rows=mix_rows_html,
         mix_combos=mix_combos_html,
         form_internal=form_internal,
         form_external=form_external,
