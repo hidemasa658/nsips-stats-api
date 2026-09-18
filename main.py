@@ -414,7 +414,8 @@ def dashboard(
                   dm.unit_price AS master_price,
                   dm.generic_name,
                   COUNT(*) AS n,
-                  SUM(COALESCE(d.total_quantity, d.quantity)) AS qty
+                  SUM(d.total_quantity) AS qty,
+                  SUM(CASE WHEN d.total_quantity IS NOT NULL THEN 1 ELSE 0 END) AS valid_n
            FROM drugs d
            LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
            GROUP BY d.yj_code, drug_name, drug_unit, d.form, dm.unit_price, dm.generic_name
@@ -431,12 +432,21 @@ def dashboard(
     def _drug_row(r):
         generic = f'<div class="generic">{_h(r["generic_name"])}</div>' if r["generic_name"] else ""
         price = f'{r["master_price"]:.2f} 円' if r["master_price"] else ""
+        # 総数量の信頼度: valid_n = 新パーサーで total_quantity が計算できた件数
+        qty_val = r["qty"] or 0
+        if r["valid_n"] and r["valid_n"] < r["n"]:
+            # 一部のみ新データ
+            qty_display = f'{qty_val:.2f} <span class="generic">(内 {r["valid_n"]}/{r["n"]} 件)</span>'
+        elif r["valid_n"]:
+            qty_display = f'{qty_val:.2f}'
+        else:
+            qty_display = '<span class="generic">旧データ (要 .txt 再来)</span>'
         return (
             f'<tr><td>{_form_badge(r["form"])}</td>'
             f'<td>{_h(r["yj_code"])}</td>'
             f'<td>{_h(r["drug_name"])}{generic}</td>'
             f'<td class="num">{r["n"]}</td>'
-            f'<td class="num">{(r["qty"] or 0):.2f}</td>'
+            f'<td class="num">{qty_display}</td>'
             f'<td>{_h(r["drug_unit"])}</td>'
             f'<td class="num">{price}</td></tr>'
         )

@@ -44,8 +44,8 @@ def test_dashboard_shows_drug_data():
     )
     pid = cur.lastrowid
     conn.execute(
-        "INSERT INTO drugs (prescription_id, yj_code, name, quantity, unit) VALUES (?, ?, ?, ?, ?)",
-        (pid, "YJ001", "テスト錠", 10.5, "錠"),
+        "INSERT INTO drugs (prescription_id, yj_code, name, quantity, total_quantity, unit) VALUES (?, ?, ?, ?, ?, ?)",
+        (pid, "YJ001", "テスト錠", 10.5, 10.5, "錠"),
     )
     conn.commit()
 
