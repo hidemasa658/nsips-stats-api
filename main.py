@@ -304,9 +304,9 @@ tr:hover {{ background: #f9f9f9; }}
 </table>
 
 <h2>混合処方 (外用剤の計量混合) 集計</h2>
-<p style="color:#64748b;font-size:13px;">record 3 field 5 が「混合」の RP + 外用剤 (M/N/Q/X/U/P) の組合せのみ集計。MIX 量 = 同 RP 内の外用剤 総処方量の合計。</p>
+<p style="color:#64748b;font-size:13px;">record 3 field 5 が「混合」の RP + 外用剤 (M/N/Q/X/U/P) の組合せのみ集計。MIX 量 = 同 RP 内の外用剤 総処方量の合計。「30g × 5件」= 合計 30g の混合が 5 回。</p>
 <table>
-<thead><tr><th class="num">件数</th><th>混合された薬剤の組合せ</th><th class="num">MIX量 平均</th><th class="num">最小</th><th class="num">最大</th></tr></thead>
+<thead><tr><th class="num">総件数</th><th>混合された薬剤の組合せ</th><th>MIX 量別 内訳 (量 × 件数)</th></tr></thead>
 <tbody>
 {mix_combos}
 </tbody>
@@ -392,37 +392,51 @@ def dashboard(
     form_external = form_summary.get("外用", 0)
     form_other = form_summary.get("その他", 0)
 
-    # 混合処方の薬剤組合せ集計 (外用のみ、MIX 量 = 同 RP の quantity 合計)
+    # 混合処方: combo × 量 で集計 → Python で combo ごとに内訳を組立
     combos_data = conn.execute(
         """
-        SELECT combo, COUNT(*) as n,
-               AVG(mix_qty) AS avg_qty,
-               MIN(mix_qty) AS min_qty,
-               MAX(mix_qty) AS max_qty,
-               unit
-        FROM (
+        WITH mix AS (
           SELECT GROUP_CONCAT(d.name, ' + ') AS combo,
-                 SUM(COALESCE(d.quantity, 0)) AS mix_qty,
+                 ROUND(SUM(COALESCE(d.quantity, 0)), 2) AS mix_qty,
                  MAX(d.unit) AS unit
           FROM rps r
           JOIN drugs d ON d.prescription_id = r.prescription_id AND d.rp_no = r.rp_no
           WHERE r.is_mixed = 1 AND d.name IS NOT NULL AND d.form = '外用'
           GROUP BY r.id
         )
+        SELECT combo, mix_qty, unit, COUNT(*) AS n
+        FROM mix
         WHERE combo IS NOT NULL
-        GROUP BY combo, unit
-        ORDER BY n DESC, avg_qty DESC
-        LIMIT 30
+        GROUP BY combo, mix_qty, unit
+        ORDER BY combo, mix_qty
         """
     ).fetchall()
+
+    # Python 側で combo ごとにグルーピング + 総件数計算
+    from collections import defaultdict
+    combo_map: dict = defaultdict(list)
+    combo_total: dict = defaultdict(int)
+    for r in combos_data:
+        combo_map[r["combo"]].append((r["mix_qty"], r["unit"], r["n"]))
+        combo_total[r["combo"]] += r["n"]
+
+    sorted_combos = sorted(combo_map.keys(), key=lambda c: -combo_total[c])[:30]
+
+    def _fmt_breakdown(entries):
+        # 量が多い順にソート
+        entries.sort(key=lambda x: -(x[0] or 0))
+        parts = []
+        for qty, unit, n in entries:
+            qty_str = f"{qty:g}" if qty else "0"
+            parts.append(f'<span style="display:inline-block;background:#e0f2fe;border-radius:12px;padding:2px 10px;margin:2px 4px 2px 0;font-size:12px;">{qty_str}{_h(unit or "")}×{n}</span>')
+        return "".join(parts)
+
     mix_combos_html = "\n".join(
-        f'<tr><td class="num">{r["n"]}</td>'
-        f'<td>{_h(r["combo"])}</td>'
-        f'<td class="num">{(r["avg_qty"] or 0):.1f} {_h(r["unit"] or "")}</td>'
-        f'<td class="num">{(r["min_qty"] or 0):.1f}</td>'
-        f'<td class="num">{(r["max_qty"] or 0):.1f}</td></tr>'
-        for r in combos_data
-    ) or '<tr><td colspan="5">(データなし — 新クライアントから RP 情報 (is_mixed) が届き次第表示)</td></tr>'
+        f'<tr><td class="num"><strong>{combo_total[c]}</strong></td>'
+        f'<td>{_h(c)}</td>'
+        f'<td>{_fmt_breakdown(combo_map[c])}</td></tr>'
+        for c in sorted_combos
+    ) or '<tr><td colspan="3">(データなし — 新クライアントから RP 情報 (is_mixed) が届き次第表示)</td></tr>'
 
     mix_total = conn.execute(
         "SELECT COUNT(DISTINCT prescription_id) FROM fees WHERE is_mix_flag = 1"
