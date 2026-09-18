@@ -72,6 +72,10 @@ def init_db(conn: sqlite3.Connection) -> None:
                 "management_fee", "long_prescription_fee", "patient_copay"):
         if col not in presc_cols:
             conn.execute(f"ALTER TABLE prescriptions ADD COLUMN {col} INTEGER")
+    # drug_pricings に internal_dispensing_fee (record 6 末尾)
+    dp_cols = [r[1] for r in conn.execute("PRAGMA table_info(drug_pricings)").fetchall()]
+    if dp_cols and "internal_dispensing_fee" not in dp_cols:
+        conn.execute("ALTER TABLE drug_pricings ADD COLUMN internal_dispensing_fee INTEGER")
     # drugs: form 分類 + rp_no 平文
     drugs_cols = [r[1] for r in conn.execute("PRAGMA table_info(drugs)").fetchall()]
     if "form" not in drugs_cols:
@@ -136,6 +140,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           drug_fee_per_unit INTEGER,
           quantity INTEGER,
           total INTEGER,
+          internal_dispensing_fee INTEGER,
           FOREIGN KEY (prescription_id) REFERENCES prescriptions(id)
         );
         """

@@ -32,6 +32,7 @@ class DrugPricingIn(BaseModel):
     drug_fee_per_unit: int | None = None  # 薬剤料単価
     quantity: int | None = None  # 数量
     total: int | None = None  # 合計 (調剤料 + 薬剤料単価 × 数量)
+    internal_dispensing_fee: int | None = None  # 内服調剤料 (position 28) 60/10/0
 
 
 class FeeIn(BaseModel):

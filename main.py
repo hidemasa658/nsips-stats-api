@@ -126,12 +126,13 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
         conn.execute(
             """
             INSERT INTO drug_pricings
-              (prescription_id, seq, dispensing_fee, drug_fee_per_unit, quantity, total)
-            VALUES (?, ?, ?, ?, ?, ?)
+              (prescription_id, seq, dispensing_fee, drug_fee_per_unit, quantity, total,
+               internal_dispensing_fee)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 presc_id, dp.seq, dp.dispensing_fee, dp.drug_fee_per_unit,
-                dp.quantity, dp.total,
+                dp.quantity, dp.total, dp.internal_dispensing_fee,
             ),
         )
 
@@ -335,6 +336,9 @@ tr:hover {{ background: #f9f9f9; }}
   <div class="kpi"><div class="val">{dp_total_dispensing:,}</div><div class="lbl">調剤料 合計 (点)</div></div>
   <div class="kpi"><div class="val">{dp_total_drug_fee:,}</div><div class="lbl">薬剤料 合計 (点)</div></div>
   <div class="kpi"><div class="val">{dp_count:,}</div><div class="lbl">剤 (record 6 行数)</div></div>
+  <div class="kpi"><div class="val">{dp_internal_total:,}</div><div class="lbl">内服調剤料 累計 (点)</div></div>
+  <div class="kpi"><div class="val">{dp_long_count:,}</div><div class="lbl">長期処方 28日以上 (60点/剤)</div></div>
+  <div class="kpi"><div class="val">{dp_short_count:,}</div><div class="lbl">短期処方 27日以下 (10点/剤)</div></div>
 </div>
 
 <h2>期間別 集計</h2>
@@ -524,11 +528,17 @@ def dashboard(
         """SELECT
              COALESCE(SUM(dispensing_fee), 0) AS total_dispensing,
              COALESCE(SUM(drug_fee_per_unit * quantity), 0) AS total_drug_fee,
+             COALESCE(SUM(internal_dispensing_fee), 0) AS internal_dispensing_total,
+             COALESCE(SUM(CASE WHEN internal_dispensing_fee = 60 THEN 1 ELSE 0 END), 0) AS long_count,
+             COALESCE(SUM(CASE WHEN internal_dispensing_fee = 10 THEN 1 ELSE 0 END), 0) AS short_count,
              COUNT(*) AS n
            FROM drug_pricings"""
     ).fetchone()
     dp_total_dispensing = dp_agg["total_dispensing"]
     dp_total_drug_fee = dp_agg["total_drug_fee"]
+    dp_internal_total = dp_agg["internal_dispensing_total"]
+    dp_long_count = dp_agg["long_count"]
+    dp_short_count = dp_agg["short_count"]
     dp_count = dp_agg["n"]
 
     # 剤形別 サマリー (件数)
@@ -662,6 +672,9 @@ def dashboard(
         dp_total_dispensing=dp_total_dispensing,
         dp_total_drug_fee=dp_total_drug_fee,
         dp_count=dp_count,
+        dp_internal_total=dp_internal_total,
+        dp_long_count=dp_long_count,
+        dp_short_count=dp_short_count,
         t_total_points=t_agg["total_points"],
         t_patient_copay=t_agg["patient_copay"],
         t_dispensing_base=t_agg["dispensing_base"],
