@@ -57,4 +57,10 @@ def connect(db_path: Path) -> sqlite3.Connection:
 def init_db(conn: sqlite3.Connection) -> None:
     """スキーマを IF NOT EXISTS で流し込む (冪等)。"""
     conn.executescript(SCHEMA)
+    # マイグレーション: fee_code / fee_name を平文で追加 (加算集計用)
+    fees_cols = [r[1] for r in conn.execute("PRAGMA table_info(fees)").fetchall()]
+    if "code" not in fees_cols:
+        conn.execute("ALTER TABLE fees ADD COLUMN code TEXT")
+    if "name" not in fees_cols:
+        conn.execute("ALTER TABLE fees ADD COLUMN name TEXT")
     conn.commit()

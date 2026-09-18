@@ -97,14 +97,16 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
         conn.execute(
             """
             INSERT INTO fees
-              (prescription_id, fee_type, code_enc, name_enc, count, points, is_mix_flag)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+              (prescription_id, fee_type, code_enc, name_enc, code, name, count, points, is_mix_flag)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 presc_id,
                 f.fee_type,
                 f.code_enc,
                 f.name_enc,
+                f.code,
+                f.name,
                 f.count,
                 f.points,
                 1 if f.is_mix_flag else 0,
@@ -269,11 +271,27 @@ tr:hover {{ background: #f9f9f9; }}
 </tbody>
 </table>
 
+<h2>各種加算・料金 累計</h2>
+<table>
+<thead><tr><th>種別</th><th>加算コード</th><th>加算名</th><th class="num">算定回数</th><th class="num">合計点数</th></tr></thead>
+<tbody>
+{fee_rows}
+</tbody>
+</table>
+
 <h2>計量混合加算 内訳</h2>
 <table>
 <thead><tr><th>混合品目数</th><th class="num">該当件数</th></tr></thead>
 <tbody>
 {mix_rows}
+</tbody>
+</table>
+
+<h2>最新受入 生データ (直近 20 件)</h2>
+<table>
+<thead><tr><th>ID</th><th>検知日時</th><th class="num">薬剤数</th><th class="num">加算数</th><th>薬品名 (先頭 3)</th><th>加算名 (先頭 3)</th></tr></thead>
+<tbody>
+{recent_rows}
 </tbody>
 </table>
 
@@ -326,12 +344,52 @@ def dashboard(
         for r in mix_data
     ) or '<tr><td colspan="2">(該当なし)</td></tr>'
 
+    # 加算・料金 累計 (name/code が平文で入っているものだけ集計)
+    fee_data = conn.execute(
+        """SELECT fee_type, code, name, SUM(count) AS total_count, SUM(points) AS total_points
+           FROM fees WHERE name IS NOT NULL
+           GROUP BY fee_type, code, name
+           ORDER BY total_count DESC, total_points DESC"""
+    ).fetchall()
+    fee_rows_html = "\n".join(
+        f'<tr><td>{_h(r["fee_type"])}</td><td>{_h(r["code"])}</td>'
+        f'<td>{_h(r["name"])}</td>'
+        f'<td class="num">{r["total_count"] or 0}</td>'
+        f'<td class="num">{r["total_points"] or 0}</td></tr>'
+        for r in fee_data
+    ) or '<tr><td colspan="5">(データなし — 加算情報の暗号化フォーマット変更後の新規受入から表示されます)</td></tr>'
+
+    # 最新受入 生データ 20 件
+    recent_data = conn.execute(
+        """SELECT p.id, p.detected_at,
+                  (SELECT COUNT(*) FROM drugs WHERE prescription_id = p.id) AS drug_n,
+                  (SELECT COUNT(*) FROM fees WHERE prescription_id = p.id) AS fee_n,
+                  (SELECT GROUP_CONCAT(name, ' / ') FROM (
+                     SELECT name FROM drugs WHERE prescription_id = p.id AND name IS NOT NULL LIMIT 3
+                   )) AS drug_sample,
+                  (SELECT GROUP_CONCAT(name, ' / ') FROM (
+                     SELECT name FROM fees WHERE prescription_id = p.id AND name IS NOT NULL LIMIT 3
+                   )) AS fee_sample
+           FROM prescriptions p
+           ORDER BY p.id DESC LIMIT 20"""
+    ).fetchall()
+    recent_rows_html = "\n".join(
+        f'<tr><td>{r["id"]}</td><td>{_h(r["detected_at"])}</td>'
+        f'<td class="num">{r["drug_n"]}</td>'
+        f'<td class="num">{r["fee_n"]}</td>'
+        f'<td>{_h(r["drug_sample"] or "")}</td>'
+        f'<td>{_h(r["fee_sample"] or "")}</td></tr>'
+        for r in recent_data
+    ) or '<tr><td colspan="6">(データなし)</td></tr>'
+
     html = DASHBOARD_HTML.format(
         prescription_count=prescription_count,
         drug_kinds=drug_kinds,
         drug_rows=drug_rows_html,
+        fee_rows=fee_rows_html,
         mix_total=mix_total,
         mix_rows=mix_rows_html,
+        recent_rows=recent_rows_html,
         now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
     return HTMLResponse(content=html)

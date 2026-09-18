@@ -16,6 +16,8 @@ class FeeIn(BaseModel):
     fee_type: str | None = None
     code_enc: str | None = None
     name_enc: str | None = None
+    code: str | None = None  # 平文 (加算集計用)
+    name: str | None = None  # 平文 (加算集計用)
     count: int | None = None
     points: int | None = None
     is_mix_flag: bool = False
