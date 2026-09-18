@@ -10,6 +10,7 @@ class DrugIn(BaseModel):
     yj_code: str | None = None
     name: str | None = None
     quantity: float | None = None
+    unit_price: float | None = None  # 薬価 (円/単位、position 24)
     unit: str | None = None
     form: str | None = None  # 内服/外用/その他
     dosage_form_code: str | None = None  # YJ 8文字目

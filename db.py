@@ -75,6 +75,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE drugs ADD COLUMN dosage_form_code TEXT")
     if "rp_no" not in drugs_cols:
         conn.execute("ALTER TABLE drugs ADD COLUMN rp_no TEXT")
+    if "unit_price" not in drugs_cols:
+        conn.execute("ALTER TABLE drugs ADD COLUMN unit_price REAL")
     # rps テーブル (RP = 用法単位のグルーピング、混合検出用)
     conn.executescript(
         """

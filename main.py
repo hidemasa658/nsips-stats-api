@@ -88,13 +88,13 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
         conn.execute(
             """
             INSERT INTO drugs
-              (prescription_id, rp_no_enc, rp_no, yj_code, name, quantity, unit,
-               form, dosage_form_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (prescription_id, rp_no_enc, rp_no, yj_code, name, quantity, unit_price,
+               unit, form, dosage_form_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 presc_id, d.rp_no_enc, d.rp_no, d.yj_code, d.name,
-                d.quantity, d.unit, d.form, d.dosage_form_code,
+                d.quantity, d.unit_price, d.unit, d.form, d.dosage_form_code,
             ),
         )
 
