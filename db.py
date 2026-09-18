@@ -67,4 +67,29 @@ def init_db(conn: sqlite3.Connection) -> None:
     presc_cols = [r[1] for r in conn.execute("PRAGMA table_info(prescriptions)").fetchall()]
     if "body_sanitized" not in presc_cols:
         conn.execute("ALTER TABLE prescriptions ADD COLUMN body_sanitized TEXT")
+    # drugs: form 分類 + rp_no 平文
+    drugs_cols = [r[1] for r in conn.execute("PRAGMA table_info(drugs)").fetchall()]
+    if "form" not in drugs_cols:
+        conn.execute("ALTER TABLE drugs ADD COLUMN form TEXT")
+    if "dosage_form_code" not in drugs_cols:
+        conn.execute("ALTER TABLE drugs ADD COLUMN dosage_form_code TEXT")
+    if "rp_no" not in drugs_cols:
+        conn.execute("ALTER TABLE drugs ADD COLUMN rp_no TEXT")
+    # rps テーブル (RP = 用法単位のグルーピング、混合検出用)
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS rps (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          prescription_id INTEGER NOT NULL,
+          rp_no TEXT,
+          usage_code TEXT,
+          usage_text TEXT,
+          site_text TEXT,
+          is_mixed INTEGER DEFAULT 0,
+          drug_count INTEGER DEFAULT 0,
+          FOREIGN KEY (prescription_id) REFERENCES prescriptions(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_rps_mixed ON rps(is_mixed);
+        """
+    )
     conn.commit()

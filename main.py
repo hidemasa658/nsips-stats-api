@@ -88,10 +88,28 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
         conn.execute(
             """
             INSERT INTO drugs
-              (prescription_id, rp_no_enc, yj_code, name, quantity, unit)
-            VALUES (?, ?, ?, ?, ?, ?)
+              (prescription_id, rp_no_enc, rp_no, yj_code, name, quantity, unit,
+               form, dosage_form_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (presc_id, d.rp_no_enc, d.yj_code, d.name, d.quantity, d.unit),
+            (
+                presc_id, d.rp_no_enc, d.rp_no, d.yj_code, d.name,
+                d.quantity, d.unit, d.form, d.dosage_form_code,
+            ),
+        )
+
+    for rp in payload.rps:
+        conn.execute(
+            """
+            INSERT INTO rps
+              (prescription_id, rp_no, usage_code, usage_text, site_text,
+               is_mixed, drug_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                presc_id, rp.rp_no, rp.usage_code, rp.usage_text, rp.site_text,
+                1 if rp.is_mixed else 0, rp.drug_count,
+            ),
         )
 
     for f in payload.fees:
@@ -264,11 +282,32 @@ tr:hover {{ background: #f9f9f9; }}
   <div class="item"><span class="big">{mix_total}</span><span class="label">計量混合加算件数</span></div>
 </div>
 
+<h2>剤形別 集計</h2>
+<div class="summary">
+  <div class="item"><span class="big">{form_internal}</span><span class="label">内服 品目 (回数)</span></div>
+  <div class="item"><span class="big">{form_external}</span><span class="label">外用 品目 (回数)</span></div>
+  <div class="item"><span class="big">{form_other}</span><span class="label">その他 品目 (回数)</span></div>
+</div>
+
 <h2>薬剤別累計 (調剤回数上位 50 品目)</h2>
+<style>
+.badge {{ display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }}
+.badge-in {{ background: #fef3c7; color: #92400e; }}
+.badge-ext {{ background: #dbeafe; color: #1e40af; }}
+.badge-other {{ background: #e5e7eb; color: #4b5563; }}
+</style>
 <table>
-<thead><tr><th>YJコード</th><th>薬品名</th><th class="num">回数</th><th class="num">総数量</th><th>単位</th></tr></thead>
+<thead><tr><th>剤形</th><th>YJコード</th><th>薬品名</th><th class="num">回数</th><th class="num">総数量</th><th>単位</th></tr></thead>
 <tbody>
 {drug_rows}
+</tbody>
+</table>
+
+<h2>混合処方 (計量混合) 集計</h2>
+<table>
+<thead><tr><th class="num">件数</th><th>混合された薬剤の組合せ</th></tr></thead>
+<tbody>
+{mix_combos}
 </tbody>
 </table>
 
@@ -323,15 +362,54 @@ def dashboard(
     drug_kinds = conn.execute("SELECT COUNT(DISTINCT yj_code) FROM drugs WHERE yj_code IS NOT NULL").fetchone()[0]
 
     drug_data = conn.execute(
-        """SELECT yj_code, name, unit, COUNT(*) AS n, SUM(quantity) AS qty
-           FROM drugs GROUP BY yj_code, name, unit ORDER BY n DESC, qty DESC LIMIT 50"""
+        """SELECT yj_code, name, unit, form, COUNT(*) AS n, SUM(quantity) AS qty
+           FROM drugs GROUP BY yj_code, name, unit, form ORDER BY n DESC, qty DESC LIMIT 50"""
     ).fetchall()
+
+    def _form_badge(form):
+        if form == "内服":
+            return '<span class="badge badge-in">内服</span>'
+        if form == "外用":
+            return '<span class="badge badge-ext">外用</span>'
+        return '<span class="badge badge-other">その他</span>'
+
     drug_rows_html = "\n".join(
-        f'<tr><td>{_h(r["yj_code"])}</td><td>{_h(r["name"])}</td>'
+        f'<tr><td>{_form_badge(r["form"])}</td>'
+        f'<td>{_h(r["yj_code"])}</td><td>{_h(r["name"])}</td>'
         f'<td class="num">{r["n"]}</td><td class="num">{(r["qty"] or 0):.2f}</td>'
         f'<td>{_h(r["unit"])}</td></tr>'
         for r in drug_data
-    ) or '<tr><td colspan="5">(データなし)</td></tr>'
+    ) or '<tr><td colspan="6">(データなし)</td></tr>'
+
+    # 剤形別 サマリー (件数)
+    form_summary = dict(
+        conn.execute(
+            "SELECT COALESCE(form, 'その他'), COUNT(*) FROM drugs GROUP BY form"
+        ).fetchall()
+    )
+    form_internal = form_summary.get("内服", 0)
+    form_external = form_summary.get("外用", 0)
+    form_other = form_summary.get("その他", 0)
+
+    # 混合処方の薬剤組合せ集計 (同じ prescription で is_mixed RP の drug をまとめて)
+    combos_data = conn.execute(
+        """
+        SELECT combo, COUNT(*) as n FROM (
+          SELECT GROUP_CONCAT(d.name, ' + ') AS combo
+          FROM rps r
+          JOIN drugs d ON d.prescription_id = r.prescription_id AND d.rp_no = r.rp_no
+          WHERE r.is_mixed = 1 AND d.name IS NOT NULL
+          GROUP BY r.id
+        )
+        GROUP BY combo
+        ORDER BY n DESC
+        LIMIT 30
+        """
+    ).fetchall()
+    mix_combos_html = "\n".join(
+        f'<tr><td class="num">{r["n"]}</td><td>{_h(r["combo"])}</td></tr>'
+        for r in combos_data
+    ) or '<tr><td colspan="2">(データなし — 新クライアントから RP 情報が届き次第表示)</td></tr>'
 
     mix_total = conn.execute(
         "SELECT COUNT(DISTINCT prescription_id) FROM fees WHERE is_mix_flag = 1"
@@ -385,6 +463,10 @@ def dashboard(
         fee_rows=fee_rows_html,
         mix_total=mix_total,
         mix_rows=mix_rows_html,
+        mix_combos=mix_combos_html,
+        form_internal=form_internal,
+        form_external=form_external,
+        form_other=form_other,
         recent_rows=recent_rows_html,
         now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )

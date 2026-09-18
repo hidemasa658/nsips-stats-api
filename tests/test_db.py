@@ -15,6 +15,7 @@ def test_init_db_creates_all_tables(tmp_path):
     assert "prescriptions" in tables
     assert "drugs" in tables
     assert "fees" in tables
+    assert "rps" in tables
 
 
 def test_init_db_creates_indexes(tmp_path):
@@ -37,7 +38,7 @@ def test_init_db_is_idempotent(tmp_path):
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
     ).fetchall()
-    assert len(rows) == 3
+    assert len(rows) == 4  # prescriptions, drugs, fees, rps
 
 
 def test_connect_creates_parent_dir(tmp_path):

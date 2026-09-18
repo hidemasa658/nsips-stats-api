@@ -6,10 +6,22 @@ from pydantic import BaseModel
 
 class DrugIn(BaseModel):
     rp_no_enc: str | None = None
+    rp_no: str | None = None  # 平文 (RP 集計用)
     yj_code: str | None = None
     name: str | None = None
     quantity: float | None = None
     unit: str | None = None
+    form: str | None = None  # 内服/外用/その他
+    dosage_form_code: str | None = None  # YJ 8文字目
+
+
+class RpIn(BaseModel):
+    rp_no: str | None = None
+    usage_code: str | None = None
+    usage_text: str | None = None
+    site_text: str | None = None
+    is_mixed: bool = False
+    drug_count: int = 0
 
 
 class FeeIn(BaseModel):
@@ -26,13 +38,14 @@ class FeeIn(BaseModel):
 class IngestPayload(BaseModel):
     source_id: str
     detected_at: str
-    body_sanitized: str | None = None  # record 1 削除済の生テキスト
+    body_sanitized: str | None = None
     clinic_code_enc: str | None = None
     clinic_name_enc: str | None = None
     prescription_date_enc: str | None = None
     doctor_name_enc: str | None = None
     drugs: list[DrugIn] = []
     fees: list[FeeIn] = []
+    rps: list[RpIn] = []
 
 
 class IngestResponse(BaseModel):
