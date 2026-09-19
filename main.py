@@ -540,7 +540,7 @@ tr:hover {{ background: #f9f9f9; }}
     <th colspan="2" class="num" style="background:#eff6ff;">📅 今週 / 前年同週</th>
     <th rowspan="2" class="num" style="background:#f5f3ff;">月平均<br>(今年度)</th>
     <th rowspan="2" class="num" style="background:#fef2f2;">予製推奨<br>2週分</th>
-    <th rowspan="2">MIX 量 別内訳<br>(全て)</th>
+    <th rowspan="2" style="background:#fef3c7;">MIX 量 別内訳<br><span style="font-weight:normal;font-size:10px;color:#78350f;">前年同月分</span></th>
   </tr>
   <tr>
     <th class="num" style="background:#f0fdf4;font-size:10px;color:#059669;">今月</th>
@@ -1096,7 +1096,7 @@ def dashboard(
         "total_n": 0, "total_qty": 0.0, "unit": "",
         "cy_n": 0, "cy_qty": 0.0,
         "py_n": 0, "py_qty": 0.0,
-        "qty_hist": _dd(int),  # mix_qty (g) → 件数
+        "qty_hist_prev_month": _dd(int),  # mix_qty (g) → 件数 (前年同月のみ)
         "monthly": _dd(lambda: {"n": 0, "qty": 0.0}),  # "YYYY-MM" → {n, qty}
         "weekly": _dd(lambda: {"n": 0, "qty": 0.0}),   # "YYYY-Wnn" → {n, qty}
     })
@@ -1109,7 +1109,9 @@ def dashboard(
         s["total_n"] += n
         s["total_qty"] += qty
         s["unit"] = r["unit"] or s["unit"]
-        s["qty_hist"][r["mix_qty"] or 0.0] += n
+        # MIX 量別内訳は 前年同月分のみ集計 (予製計画立案用)
+        if dd_ and prev_ym_start <= dd_ <= prev_ym_end:
+            s["qty_hist_prev_month"][r["mix_qty"] or 0.0] += n
         if dd_ and cy_start <= dd_ <= cy_end:
             s["cy_n"] += n
             s["cy_qty"] += qty
@@ -1136,6 +1138,16 @@ def dashboard(
     _iso_now = _today.isocalendar()
     this_week_key = f"{_iso_now[0]}-{_iso_now[1]:02d}"
     prev_year_same_week = f"{_iso_now[0] - 1}-{_iso_now[1]:02d}"
+
+    # 前年同月の期間 (YYYYMMDD 文字列で比較用)
+    prev_ym_start = f"{_today.year - 1}{_today.month:02d}01"
+    if _today.month == 12:
+        prev_ym_end = f"{_today.year - 1}1231"
+    else:
+        # 前年の翌月1日の前日
+        from calendar import monthrange as _mr
+        _last_day = _mr(_today.year - 1, _today.month)[1]
+        prev_ym_end = f"{_today.year - 1}{_today.month:02d}{_last_day:02d}"
 
     # Python 側で combo ごとにグルーピング + 総件数計算
     from collections import defaultdict
@@ -1206,8 +1218,11 @@ def dashboard(
         unit = s["unit"] or "g"
         monthly_avg_qty = s["cy_qty"] / _cy_months if _cy_months else 0
         yosei_recommend = monthly_avg_qty * 0.5
-        all_qtys = sorted(s["qty_hist"].items(), key=lambda x: -x[1])
-        qty_dist = " ".join(f'<span style="background:#dbeafe;color:#1e3a8a;padding:1px 6px;border-radius:8px;font-size:11px;display:inline-block;margin:1px 2px;">{q:g}{unit}×{n}</span>' for q, n in all_qtys if q)
+        all_qtys = sorted(s["qty_hist_prev_month"].items(), key=lambda x: -x[1])
+        if all_qtys:
+            qty_dist = " ".join(f'<span style="background:#fef3c7;color:#78350f;padding:1px 6px;border-radius:8px;font-size:11px;display:inline-block;margin:1px 2px;">{q:g}{unit}×{n}</span>' for q, n in all_qtys if q)
+        else:
+            qty_dist = '<span style="color:#94a3b8;font-size:11px;">前年同月データなし</span>'
         # 今月/前年同月 & 今週/前年同週
         cm = s["monthly"].get(this_month_key, {"n": 0, "qty": 0.0})
         pm = s["monthly"].get(prev_year_same_month, {"n": 0, "qty": 0.0})
