@@ -576,8 +576,8 @@ def dashboard(
         _DASHBOARD_CACHE
     except NameError:
         _DASHBOARD_CACHE = {}
-    row_count = conn.execute("SELECT COUNT(*) FROM prescriptions").fetchone()[0]
-    cache_key = (period or "all", row_count)
+    row_state = conn.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM prescriptions").fetchone()
+    cache_key = (period or "all", row_state[0], row_state[1])
     cached = _DASHBOARD_CACHE.get(cache_key)
     if cached and (_time_mod.time() - cached[0]) < 60:
         return HTMLResponse(content=cached[1])
