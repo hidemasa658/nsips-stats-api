@@ -540,7 +540,7 @@ tr:hover {{ background: #f9f9f9; }}
     <th colspan="2" class="num" style="background:#eff6ff;">📅 今週 / 前年同週</th>
     <th rowspan="2" class="num" style="background:#f5f3ff;">月平均<br>(今年度)</th>
     <th rowspan="2" class="num" style="background:#fef2f2;">予製推奨<br>2週分</th>
-    <th rowspan="2">頻出 MIX 量<br>(上位3)</th>
+    <th rowspan="2">MIX 量 別内訳<br>(全て)</th>
   </tr>
   <tr>
     <th class="num" style="background:#f0fdf4;font-size:10px;color:#059669;">今月</th>
@@ -1206,8 +1206,8 @@ def dashboard(
         unit = s["unit"] or "g"
         monthly_avg_qty = s["cy_qty"] / _cy_months if _cy_months else 0
         yosei_recommend = monthly_avg_qty * 0.5
-        top_qtys = sorted(s["qty_hist"].items(), key=lambda x: -x[1])[:3]
-        qty_dist = " ".join(f'<span style="background:#dbeafe;color:#1e3a8a;padding:1px 6px;border-radius:8px;font-size:11px;">{q:g}{unit}×{n}</span>' for q, n in top_qtys if q)
+        all_qtys = sorted(s["qty_hist"].items(), key=lambda x: -x[1])
+        qty_dist = " ".join(f'<span style="background:#dbeafe;color:#1e3a8a;padding:1px 6px;border-radius:8px;font-size:11px;display:inline-block;margin:1px 2px;">{q:g}{unit}×{n}</span>' for q, n in all_qtys if q)
         # 今月/前年同月 & 今週/前年同週
         cm = s["monthly"].get(this_month_key, {"n": 0, "qty": 0.0})
         pm = s["monthly"].get(prev_year_same_month, {"n": 0, "qty": 0.0})
