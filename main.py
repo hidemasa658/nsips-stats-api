@@ -553,8 +553,8 @@ tr:hover {{ background: #f9f9f9; }}
 </details>
 
 <details style="margin:24px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;">
-<summary style="cursor:pointer;font-weight:600;font-size:14px;color:#0f172a;">🗓 月別ヒートマップ (Top30 組合せ × 全月) — クリックで展開</summary>
-<p style="color:#64748b;font-size:12px;margin-top:8px;">セル = 月あたりの調剤件数。色濃さは同コンボの月平均に対する相対強度。傾向・季節性の把握用。</p>
+<summary style="cursor:pointer;font-weight:600;font-size:14px;color:#0f172a;">🗓 月別ヒートマップ (Top30 組合せ × 全月) — 単位: g / 予製計画向け — クリックで展開</summary>
+<p style="color:#64748b;font-size:12px;margin-top:8px;">セル = その月に混合された<strong>総量 (g)</strong>。1000g 以上は k 表示 (例: 1.5k = 1,500g)。色濃さは同コンボの月平均量に対する相対強度。セルにカーソルを乗せると詳細表示。</p>
 <div class="heatmap-wrap">
 <table>
 <thead><tr><th class="hm-label" style="background:#f1f5f9;">組合せ</th>{month_headers}<th class="num" style="background:#f1f5f9;">合計</th></tr></thead>
@@ -1197,26 +1197,32 @@ def dashboard(
     # Top 30 combos by 累計件数
     heatmap_combos = sorted(combo_summary.items(), key=lambda x: -x[1]["total_n"])[:30]
 
-    def _heat_cell(val, max_val):
+    def _heat_cell(val, max_val, unit):
         if not val:
             return '<td class="hm-cell hm-0"></td>'
         intensity = min(1.0, val / max(max_val, 1))
-        # 5段階
         if intensity >= 0.8: cls = "hm-5"
         elif intensity >= 0.6: cls = "hm-4"
         elif intensity >= 0.4: cls = "hm-3"
         elif intensity >= 0.2: cls = "hm-2"
         else: cls = "hm-1"
-        return f'<td class="hm-cell {cls}">{val}</td>'
+        # 量を短く表示 (1000以上は kg 単位)
+        if val >= 1000:
+            display = f"{val/1000:.1f}k"
+        else:
+            display = f"{val:.0f}"
+        return f'<td class="hm-cell {cls}" title="{val:.1f}{unit}">{display}</td>'
 
     def _heat_row(combo, s):
-        # このコンボの各月最大件数を求めて自スケール、ではなく全体最大でスケール
+        unit = s["unit"] or "g"
         cells = []
         for ym in sorted_months:
-            v = monthly_combo_map[combo].get(ym, {}).get("n", 0)
-            cells.append(_heat_cell(v, s["total_n"] / max(1, len(sorted_months)) * 3))  # 平均の3倍を上限にスケール
+            v = monthly_combo_map[combo].get(ym, {}).get("qty", 0.0)
+            # スケール: このコンボの月平均量の3倍
+            cells.append(_heat_cell(v, s["total_qty"] / max(1, len(sorted_months)) * 3, unit))
         combo_short = combo if len(combo) < 40 else combo[:38] + "…"
-        return f'<tr><td class="hm-label">{_h(combo_short)}</td>{"".join(cells)}<td class="num" style="background:#f8fafc;font-weight:600">{s["total_n"]}</td></tr>'
+        total_disp = f"{s['total_qty']/1000:.1f}k{unit}" if s["total_qty"] >= 1000 else f"{s['total_qty']:.0f}{unit}"
+        return f'<tr><td class="hm-label">{_h(combo_short)}</td>{"".join(cells)}<td class="num" style="background:#f8fafc;font-weight:600">{total_disp}</td></tr>'
 
     month_header_html = "".join(f'<th class="hm-month">{m[:4]}<br>/{m[4:6]}</th>' for m in sorted_months)
     heatmap_rows_html = "\n".join(_heat_row(c, s) for c, s in heatmap_combos) or f'<tr><td colspan="{len(sorted_months)+2}">(データなし)</td></tr>'
