@@ -88,22 +88,25 @@ def reparse_all(db_path: Path) -> tuple[int, int]:
                  dp.get("total"), dp.get("internal_dispensing_fee")),
             )
 
-        # prescriptions の totals を UPDATE
+        # prescriptions の totals + dispense_date/dispensed_at を UPDATE
         t = parsed.get("totals", {})
-        if t:
-            conn.execute(
-                """UPDATE prescriptions SET
-                     total_points = ?,
-                     dispensing_base_fee = ?,
-                     night_holiday_fee = ?,
-                     management_fee = ?,
-                     long_prescription_fee = ?,
-                     patient_copay = ?
-                   WHERE id = ?""",
-                (t.get("total_points"), t.get("dispensing_base_fee"),
-                 t.get("night_holiday_fee"), t.get("management_fee"),
-                 t.get("long_prescription_fee"), t.get("patient_copay"), pid),
-            )
+        conn.execute(
+            """UPDATE prescriptions SET
+                 total_points = ?,
+                 dispensing_base_fee = ?,
+                 night_holiday_fee = ?,
+                 management_fee = ?,
+                 long_prescription_fee = ?,
+                 patient_copay = ?,
+                 dispense_date = COALESCE(?, dispense_date),
+                 dispensed_at = COALESCE(?, dispensed_at)
+               WHERE id = ?""",
+            (t.get("total_points"), t.get("dispensing_base_fee"),
+             t.get("night_holiday_fee"), t.get("management_fee"),
+             t.get("long_prescription_fee"), t.get("patient_copay"),
+             parsed.get("dispense_date"), parsed.get("dispensed_at"),
+             pid),
+        )
 
         updated += 1
         if updated % 20 == 0:

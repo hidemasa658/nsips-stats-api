@@ -132,6 +132,18 @@ def parse_nsips(body: str) -> dict:
         if rec == "1":
             continue  # 患者情報破棄
 
+        if rec.startswith("VER"):
+            # ヘッダ: VER010603,20260919091259,Medicom Pharnes,...
+            # フィールド 1 の 先頭 8 桁 = 調剤日 (YYYYMMDD)、14 桁で調剤日時
+            ts = _col(fields, 1)
+            if ts and len(ts) >= 8 and ts[:8].isdigit():
+                result["dispense_date"] = ts[:8]  # "20260919"
+                if len(ts) >= 14 and ts[:14].isdigit():
+                    result["dispensed_at"] = (
+                        f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]}T{ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
+                    )
+            continue
+
         if rec == "5":
             # record 5: 全体集計。
             # [5] 請求点数、[7] 調剤基本料、[8] 夜間・休日等加算、

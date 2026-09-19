@@ -67,6 +67,10 @@ def init_db(conn: sqlite3.Connection) -> None:
     presc_cols = [r[1] for r in conn.execute("PRAGMA table_info(prescriptions)").fetchall()]
     if "body_sanitized" not in presc_cols:
         conn.execute("ALTER TABLE prescriptions ADD COLUMN body_sanitized TEXT")
+    if "dispense_date" not in presc_cols:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN dispense_date TEXT")
+    if "dispensed_at" not in presc_cols:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN dispensed_at TEXT")
     # record 5 全体集計フィールド
     for col in ("total_points", "dispensing_base_fee", "night_holiday_fee",
                 "management_fee", "long_prescription_fee", "patient_copay"):

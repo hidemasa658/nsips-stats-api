@@ -69,15 +69,18 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
     cur = conn.execute(
         """
         INSERT INTO prescriptions
-          (source_id, detected_at, body_sanitized, clinic_code_enc, clinic_name_enc,
+          (source_id, detected_at, dispense_date, dispensed_at,
+           body_sanitized, clinic_code_enc, clinic_name_enc,
            prescription_date_enc, doctor_name_enc,
            total_points, dispensing_base_fee, night_holiday_fee,
            management_fee, long_prescription_fee, patient_copay)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payload.source_id,
             payload.detected_at,
+            payload.dispense_date,
+            payload.dispensed_at,
             payload.body_sanitized,
             payload.clinic_code_enc,
             payload.clinic_name_enc,
@@ -311,7 +314,17 @@ tr:hover {{ background: #f9f9f9; }}
 .kpi-section-title {{ font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 20px 0 4px; padding-left: 4px; }}
 </style>
 
-<div class="kpi-section-title">基本</div>
+<div class="kpi-section-title">今日 / 昨日 (調剤日ベース)</div>
+<div class="kpi-grid">
+  <div class="kpi accent-green"><div class="val">{today_count}</div><div class="lbl">今日の処方件数</div></div>
+  <div class="kpi accent-green"><div class="val">{today_points:,}</div><div class="lbl">今日の請求点数</div></div>
+  <div class="kpi accent-green"><div class="val">{today_copay:,}</div><div class="lbl">今日の患者負担金</div></div>
+  <div class="kpi"><div class="val">{yesterday_count}</div><div class="lbl">昨日の処方件数</div></div>
+  <div class="kpi"><div class="val">{yesterday_points:,}</div><div class="lbl">昨日の請求点数</div></div>
+  <div class="kpi"><div class="val">{yesterday_copay:,}</div><div class="lbl">昨日の患者負担金</div></div>
+</div>
+
+<div class="kpi-section-title">基本 (全期間)</div>
 <div class="kpi-grid">
   <div class="kpi accent-purple"><div class="val">{prescription_count}</div><div class="lbl">総処方受入件数</div></div>
   <div class="kpi accent-purple"><div class="val">{drug_kinds}</div><div class="lbl">薬品種類</div></div>
@@ -593,14 +606,33 @@ def dashboard(
         for r in ingredient_data
     ) or '<tr><td colspan="5">(データなし)</td></tr>'
 
-    # 日別集計 (直近 30 日)
+    # 今日 / 昨日 サマリー (dispense_date 優先、無ければ detected_at 日付)
+    from datetime import datetime, timedelta
+    today = datetime.now().strftime("%Y%m%d")
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+
+    def _period_agg(date_str: str) -> dict:
+        row = conn.execute(
+            """SELECT COUNT(*) n,
+                      COALESCE(SUM(total_points), 0) pts,
+                      COALESCE(SUM(patient_copay), 0) cp
+               FROM prescriptions
+               WHERE COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)) = ?""",
+            (date_str,),
+        ).fetchone()
+        return {"n": row["n"], "pts": row["pts"], "cp": row["cp"]}
+
+    today_agg = _period_agg(today)
+    yesterday_agg = _period_agg(yesterday)
+
+    # 日別集計 (直近 30 日、dispense_date 優先)
     daily_data = conn.execute(
-        """SELECT DATE(detected_at) AS d,
+        """SELECT COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)) AS d,
                   COUNT(*) AS n,
                   COALESCE(SUM(total_points), 0) AS pts,
                   COALESCE(SUM(patient_copay), 0) AS cp
            FROM prescriptions
-           GROUP BY DATE(detected_at)
+           GROUP BY d
            ORDER BY d DESC LIMIT 30"""
     ).fetchall()
     daily_rows_html = "\n".join(
@@ -611,14 +643,14 @@ def dashboard(
         for r in daily_data
     ) or '<tr><td colspan="4">(データなし)</td></tr>'
 
-    # 月別集計 (全期間)
+    # 月別集計 (全期間、dispense_date 優先)
     monthly_data = conn.execute(
-        """SELECT SUBSTR(detected_at, 1, 7) AS m,
+        """SELECT COALESCE(SUBSTR(dispense_date, 1, 6), SUBSTR(REPLACE(detected_at,'-',''), 1, 6)) AS m,
                   COUNT(*) AS n,
                   COALESCE(SUM(total_points), 0) AS pts,
                   COALESCE(SUM(patient_copay), 0) AS cp
            FROM prescriptions
-           GROUP BY SUBSTR(detected_at, 1, 7)
+           GROUP BY m
            ORDER BY m DESC"""
     ).fetchall()
     monthly_rows_html = "\n".join(
@@ -799,6 +831,12 @@ def dashboard(
         daily_rows=daily_rows_html,
         monthly_rows=monthly_rows_html,
         ingredient_rows=ingredient_rows_html,
+        today_count=today_agg["n"],
+        today_points=today_agg["pts"],
+        today_copay=today_agg["cp"],
+        yesterday_count=yesterday_agg["n"],
+        yesterday_points=yesterday_agg["pts"],
+        yesterday_copay=yesterday_agg["cp"],
         dp_total_dispensing=dp_total_dispensing,
         dp_total_drug_fee=dp_total_drug_fee,
         dp_count=dp_count,

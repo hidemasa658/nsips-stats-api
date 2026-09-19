@@ -58,6 +58,8 @@ class TotalsIn(BaseModel):
 class IngestPayload(BaseModel):
     source_id: str
     detected_at: str
+    dispense_date: str | None = None    # 調剤日 YYYYMMDD (VER レコードから)
+    dispensed_at: str | None = None     # 調剤日時 ISO (VER レコードから)
     body_sanitized: str | None = None
     totals: TotalsIn | None = None
     clinic_code_enc: str | None = None
