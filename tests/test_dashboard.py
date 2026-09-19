@@ -72,8 +72,9 @@ def test_dashboard_escapes_html():
 
     client = TestClient(app)
     r = client.get("/dashboard?token=test-token")
-    assert "<script>" not in r.text
-    assert "&lt;script&gt;" in r.text
+    # ユーザ入力 (YJ<script>) が生の状態で埋め込まれていないことを確認
+    assert "YJ<script>" not in r.text
+    assert "YJ&lt;script&gt;" in r.text
     assert "<img onerror=x>" not in r.text
 
 
