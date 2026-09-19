@@ -290,7 +290,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="refresh" content="60">
+<meta http-equiv="refresh" content="300">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <title>nsips-stats ダッシュボード</title>
@@ -525,7 +525,9 @@ tr:hover {{ background: #f9f9f9; }}
 <h3 style="font-size:14px;margin:20px 0 8px;color:#475569;">週次トレンド (直近 26 週)</h3>
 <div class="chart-wrap">{weekly_chart}</div>
 
-<h3 style="font-size:14px;margin:24px 0 8px;color:#475569;">📊 予製計画レポート — 年度対比 (件数上位 50 組合せ)</h3>
+<details style="margin:24px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;">
+<summary style="cursor:pointer;font-weight:600;font-size:14px;color:#0f172a;">📊 予製計画レポート — 年度対比 (件数上位 50 組合せ) — クリックで展開</summary>
+<div style="margin-top:12px;">
 {planning_report}
 <div style="overflow-x:auto;">
 <table style="font-size:13px;">
@@ -547,9 +549,12 @@ tr:hover {{ background: #f9f9f9; }}
 </tbody>
 </table>
 </div>
+</div>
+</details>
 
-<h3 style="font-size:14px;margin:24px 0 8px;color:#475569;">🗓 月別ヒートマップ (件数上位 30 組合せ × 全月)</h3>
-<p style="color:#64748b;font-size:12px;">セル = 月あたりの調剤件数。色濃さは同コンボの月平均に対する相対強度。傾向・季節性の把握用。</p>
+<details style="margin:24px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;">
+<summary style="cursor:pointer;font-weight:600;font-size:14px;color:#0f172a;">🗓 月別ヒートマップ (Top30 組合せ × 全月) — クリックで展開</summary>
+<p style="color:#64748b;font-size:12px;margin-top:8px;">セル = 月あたりの調剤件数。色濃さは同コンボの月平均に対する相対強度。傾向・季節性の把握用。</p>
 <div class="heatmap-wrap">
 <table>
 <thead><tr><th class="hm-label" style="background:#f1f5f9;">組合せ</th>{month_headers}<th class="num" style="background:#f1f5f9;">合計</th></tr></thead>
@@ -558,15 +563,18 @@ tr:hover {{ background: #f9f9f9; }}
 </tbody>
 </table>
 </div>
+</details>
 
-<h3 style="font-size:14px;margin:24px 0 8px;color:#475569;">混合組合せ 累計 (上位 30)</h3>
-<p style="color:#64748b;font-size:12px;">record 3 field 5 が「混合」の RP + 外用剤 (M/N/Q/X/U/P) の組合せのみ集計。MIX 量 = 同 RP 内の外用剤 総処方量の合計。「30g × 5件」= 合計 30g の混合が 5 回。</p>
+<details style="margin:24px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;">
+<summary style="cursor:pointer;font-weight:600;font-size:14px;color:#0f172a;">混合組合せ 累計 (上位 30) — クリックで展開</summary>
+<p style="color:#64748b;font-size:12px;margin-top:8px;">record 3 field 5 が「混合」の RP + 外用剤 (M/N/Q/X/U/P) の組合せのみ集計。MIX 量 = 同 RP 内の外用剤 総処方量の合計。「30g × 5件」= 合計 30g の混合が 5 回。</p>
 <table>
 <thead><tr><th class="num">総件数</th><th>混合された薬剤の組合せ</th><th>MIX 量別 内訳 (量 × 件数)</th></tr></thead>
 <tbody>
 {mix_combos}
 </tbody>
 </table>
+</details>
 
 <h2>各種加算・料金 累計</h2>
 <table>
@@ -576,24 +584,30 @@ tr:hover {{ background: #f9f9f9; }}
 </tbody>
 </table>
 
-<h2>最新受入 生データ (直近 20 件、行をクリックで raw 展開)</h2>
 <style>
-details {{ margin: 8px 0; padding: 8px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; }}
-details summary {{ cursor: pointer; font-weight: 500; padding: 4px 0; }}
-details summary:hover {{ color: #0369a1; }}
-details pre {{ background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; margin-top: 8px; font-family: "SFMono-Regular", Menlo, Consolas, monospace; }}
+.raw-details {{ margin: 8px 0; padding: 8px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; }}
+.raw-details summary {{ cursor: pointer; font-weight: 500; padding: 4px 0; }}
+.raw-details summary:hover {{ color: #0369a1; }}
+.raw-details pre {{ background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; margin-top: 8px; font-family: "SFMono-Regular", Menlo, Consolas, monospace; }}
 .meta {{ color: #64748b; font-size: 12px; margin-left: 12px; }}
 </style>
+<details style="margin:24px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;">
+<summary style="cursor:pointer;font-weight:600;font-size:14px;color:#0f172a;">最新受入 生データ (直近 20 件、行をクリックで raw 展開) — クリックで展開</summary>
+<div style="margin-top:12px;">
 {recent_rows}
+</div>
+</details>
 
-<h2>成分別 累計 (YJ 1〜7 桁: 同一成分でまとめる)</h2>
-<p style="color:#64748b;font-size:12px;">同じ成分の 先発品・後発品・別剤形をまとめて集計。品目数 &gt; 1 は同じ成分の複数バリエーションが処方された = 後発切替検討や剤形選択の余地あり。</p>
+<details style="margin:16px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;">
+<summary style="cursor:pointer;font-weight:600;font-size:14px;color:#0f172a;">成分別 累計 (YJ 1〜7 桁: 同一成分でまとめる) — クリックで展開</summary>
+<p style="color:#64748b;font-size:12px;margin-top:8px;">同じ成分の 先発品・後発品・別剤形をまとめて集計。品目数 &gt; 1 は同じ成分の複数バリエーションが処方された = 後発切替検討や剤形選択の余地あり。</p>
 <table>
 <thead><tr><th>YJ (1-7)</th><th>成分 (代表薬品名 / 一般名)</th><th class="num">品目数</th><th class="num">調剤回数</th><th class="num">総数量</th></tr></thead>
 <tbody>
 {ingredient_rows}
 </tbody>
 </table>
+</details>
 
 <div class="updated">最終更新: {now} (60秒ごとに自動再読込)</div>
 </body>
@@ -1326,7 +1340,7 @@ def dashboard(
            ORDER BY p.id DESC LIMIT 20"""
     ).fetchall()
     recent_rows_html = "\n".join(
-        f'<details><summary>#{r["id"]} '
+        f'<details class="raw-details"><summary>#{r["id"]} '
         f'<span class="meta">{_h(r["detected_at"])} · 薬剤 {r["drug_n"]} · 加算 {r["fee_n"]}</span></summary>'
         f'<pre>{_h(r["body_sanitized"] or "(旧クライアントのため生データ未保存)")}</pre>'
         f'</details>'
