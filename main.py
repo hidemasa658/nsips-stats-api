@@ -394,6 +394,20 @@ tr:hover {{ background: #f9f9f9; }}
 .chart-wrap svg .lbl {{ font-size: 9px; fill: #64748b; text-anchor: middle; }}
 .chart-wrap svg .val {{ font-size: 10px; fill: #0f172a; text-anchor: middle; font-weight: 600; }}
 .chart-wrap svg .grid {{ stroke: #e5e7eb; stroke-width: 1; stroke-dasharray: 3,3; }}
+
+/* 月別ヒートマップ */
+.heatmap-wrap {{ overflow-x: auto; margin: 12px 0; }}
+.heatmap-wrap table {{ border-collapse: collapse; font-size: 11px; }}
+.heatmap-wrap th, .heatmap-wrap td {{ padding: 3px 5px; border: 1px solid #f1f5f9; text-align: center; }}
+.heatmap-wrap .hm-label {{ text-align: left; padding: 3px 8px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #f8fafc; font-size: 11px; position: sticky; left: 0; z-index: 1; }}
+.heatmap-wrap .hm-month {{ background: #f1f5f9; color: #475569; font-weight: 500; font-size: 10px; padding: 4px 3px; }}
+.heatmap-wrap .hm-cell {{ font-variant-numeric: tabular-nums; color: #0f172a; min-width: 26px; }}
+.heatmap-wrap .hm-0 {{ background: #fff; color: #cbd5e1; }}
+.heatmap-wrap .hm-1 {{ background: #fef3c7; }}
+.heatmap-wrap .hm-2 {{ background: #fde68a; }}
+.heatmap-wrap .hm-3 {{ background: #fbbf24; color: #78350f; }}
+.heatmap-wrap .hm-4 {{ background: #f59e0b; color: #fff; font-weight: 600; }}
+.heatmap-wrap .hm-5 {{ background: #d97706; color: #fff; font-weight: 700; }}
 </style>
 
 <div class="kpi-section-title">{main_label} / {cmp_label} (調剤日ベース)</div>
@@ -530,6 +544,17 @@ tr:hover {{ background: #f9f9f9; }}
 </thead>
 <tbody>
 {planning_rows}
+</tbody>
+</table>
+</div>
+
+<h3 style="font-size:14px;margin:24px 0 8px;color:#475569;">🗓 月別ヒートマップ (件数上位 30 組合せ × 全月)</h3>
+<p style="color:#64748b;font-size:12px;">セル = 月あたりの調剤件数。色濃さは同コンボの月平均に対する相対強度。傾向・季節性の把握用。</p>
+<div class="heatmap-wrap">
+<table>
+<thead><tr><th class="hm-label" style="background:#f1f5f9;">組合せ</th>{month_headers}<th class="num" style="background:#f1f5f9;">合計</th></tr></thead>
+<tbody>
+{heatmap_rows}
 </tbody>
 </table>
 </div>
@@ -1130,6 +1155,48 @@ def dashboard(
         f'</div>'
     )
 
+    # ---- 月別ヒートマップ: combo × month の件数 ----
+    monthly_combo_map: dict = _dd(lambda: _dd(lambda: {"n": 0, "qty": 0.0}))
+    all_months: set = set()
+    for r in combos_data:
+        c = r["combo"]
+        n = r["n"]
+        qty = (r["mix_qty"] or 0.0) * n
+        dd_ = r["dispense_date"]
+        if not dd_ or len(dd_) < 6:
+            continue
+        ym = dd_[:6]
+        all_months.add(ym)
+        monthly_combo_map[c][ym]["n"] += n
+        monthly_combo_map[c][ym]["qty"] += qty
+    sorted_months = sorted(all_months)  # 全期間
+    # Top 30 combos by 累計件数
+    heatmap_combos = sorted(combo_summary.items(), key=lambda x: -x[1]["total_n"])[:30]
+
+    def _heat_cell(val, max_val):
+        if not val:
+            return '<td class="hm-cell hm-0"></td>'
+        intensity = min(1.0, val / max(max_val, 1))
+        # 5段階
+        if intensity >= 0.8: cls = "hm-5"
+        elif intensity >= 0.6: cls = "hm-4"
+        elif intensity >= 0.4: cls = "hm-3"
+        elif intensity >= 0.2: cls = "hm-2"
+        else: cls = "hm-1"
+        return f'<td class="hm-cell {cls}">{val}</td>'
+
+    def _heat_row(combo, s):
+        # このコンボの各月最大件数を求めて自スケール、ではなく全体最大でスケール
+        cells = []
+        for ym in sorted_months:
+            v = monthly_combo_map[combo].get(ym, {}).get("n", 0)
+            cells.append(_heat_cell(v, s["total_n"] / max(1, len(sorted_months)) * 3))  # 平均の3倍を上限にスケール
+        combo_short = combo if len(combo) < 40 else combo[:38] + "…"
+        return f'<tr><td class="hm-label">{_h(combo_short)}</td>{"".join(cells)}<td class="num" style="background:#f8fafc;font-weight:600">{s["total_n"]}</td></tr>'
+
+    month_header_html = "".join(f'<th class="hm-month">{m[:4]}<br>/{m[4:6]}</th>' for m in sorted_months)
+    heatmap_rows_html = "\n".join(_heat_row(c, s) for c, s in heatmap_combos) or f'<tr><td colspan="{len(sorted_months)+2}">(データなし)</td></tr>'
+
     mix_total = conn.execute(
         "SELECT COUNT(DISTINCT prescription_id) FROM fees WHERE is_mix_flag = 1"
     ).fetchone()[0]
@@ -1279,6 +1346,8 @@ def dashboard(
         mix_combos=mix_combos_html,
         planning_report=planning_report_html,
         planning_rows=planning_rows_html,
+        month_headers=month_header_html,
+        heatmap_rows=heatmap_rows_html,
         form_internal=form_internal,
         form_external=form_external,
         form_injection=form_injection,
