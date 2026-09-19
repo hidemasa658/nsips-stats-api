@@ -530,18 +530,23 @@ tr:hover {{ background: #f9f9f9; }}
 <div style="margin-top:12px;">
 {planning_report}
 <div style="overflow-x:auto;">
-<table style="font-size:13px;">
+<table style="font-size:12px;">
 <thead>
   <tr>
-    <th>組合せ</th>
-    <th class="num">累計 件数</th>
-    <th class="num">累計 量</th>
-    <th class="num" style="background:#f0fdf4;">今年度<br><span style="font-weight:normal;font-size:10px;color:#059669">件 / 量</span></th>
-    <th class="num" style="background:#fef3c7;">前年度<br><span style="font-weight:normal;font-size:10px;color:#78350f">件 / 量</span></th>
-    <th class="num">前年比<br><span style="font-weight:normal;font-size:10px;color:#94a3b8">月数按分</span></th>
-    <th class="num" style="background:#eff6ff;">月平均<br><span style="font-weight:normal;font-size:10px;color:#3b82f6">量 / 件数</span></th>
-    <th class="num" style="background:#fef2f2;">予製推奨<br><span style="font-weight:normal;font-size:10px;color:#991b1b">2週間分</span></th>
-    <th>頻出 MIX 量 (上位3)</th>
+    <th rowspan="2">組合せ</th>
+    <th rowspan="2" class="num">累計<br>件数</th>
+    <th rowspan="2" class="num">累計<br>量</th>
+    <th colspan="2" class="num" style="background:#f0fdf4;">📅 今月 / 前年同月</th>
+    <th colspan="2" class="num" style="background:#eff6ff;">📅 今週 / 前年同週</th>
+    <th rowspan="2" class="num" style="background:#f5f3ff;">月平均<br>(今年度)</th>
+    <th rowspan="2" class="num" style="background:#fef2f2;">予製推奨<br>2週分</th>
+    <th rowspan="2">頻出 MIX 量<br>(上位3)</th>
+  </tr>
+  <tr>
+    <th class="num" style="background:#f0fdf4;font-size:10px;color:#059669;">今月</th>
+    <th class="num" style="background:#fef3c7;font-size:10px;color:#78350f;">前年同月</th>
+    <th class="num" style="background:#eff6ff;font-size:10px;color:#1e40af;">今週</th>
+    <th class="num" style="background:#fef3c7;font-size:10px;color:#78350f;">前年同週</th>
   </tr>
 </thead>
 <tbody>
@@ -549,6 +554,19 @@ tr:hover {{ background: #f9f9f9; }}
 </tbody>
 </table>
 </div>
+</div>
+</details>
+
+<details open style="margin:24px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;">
+<summary style="cursor:pointer;font-weight:600;font-size:14px;color:#0f172a;">📆 週別ドリルダウン (Top10 コンボ × 直近8週 × 前年同週対比)</summary>
+<p style="color:#64748b;font-size:12px;margin-top:8px;">セル上段 = 今週の件数、下段小さい数字 = 総量。「前:N件 Xg」= 前年同週の実績。</p>
+<div style="overflow-x:auto;">
+<table style="border-collapse:collapse;font-size:11px;">
+<thead><tr><th style="background:#f1f5f9;padding:6px 8px;">組合せ</th>{weekly_drill_headers}</tr></thead>
+<tbody>
+{weekly_drill_rows}
+</tbody>
+</table>
 </div>
 </details>
 
@@ -1071,18 +1089,21 @@ def dashboard(
         """
     ).fetchall()
 
-    # ---- combo ごとの年度別 KPI 集計 ----
+    # ---- combo ごとの多角的集計 (年度/月/週) ----
     from collections import defaultdict as _dd
+    from datetime import date as _date
     combo_summary: dict = _dd(lambda: {
         "total_n": 0, "total_qty": 0.0, "unit": "",
         "cy_n": 0, "cy_qty": 0.0,
         "py_n": 0, "py_qty": 0.0,
         "qty_hist": _dd(int),  # mix_qty (g) → 件数
+        "monthly": _dd(lambda: {"n": 0, "qty": 0.0}),  # "YYYY-MM" → {n, qty}
+        "weekly": _dd(lambda: {"n": 0, "qty": 0.0}),   # "YYYY-Wnn" → {n, qty}
     })
     for r in combos_data:
         c = r["combo"]
         n = r["n"]
-        qty = (r["mix_qty"] or 0.0) * n  # 総量 = 単発量 × 件数
+        qty = (r["mix_qty"] or 0.0) * n
         dd_ = r["dispense_date"]
         s = combo_summary[c]
         s["total_n"] += n
@@ -1095,6 +1116,26 @@ def dashboard(
         elif dd_ and py_start <= dd_ <= py_end:
             s["py_n"] += n
             s["py_qty"] += qty
+        # 月別 / 週別
+        if dd_ and len(dd_) >= 8:
+            try:
+                y, m, d = int(dd_[:4]), int(dd_[4:6]), int(dd_[6:8])
+                ym = f"{y}-{m:02d}"
+                s["monthly"][ym]["n"] += n
+                s["monthly"][ym]["qty"] += qty
+                iso = _date(y, m, d).isocalendar()
+                wk = f"{iso[0]}-{iso[1]:02d}"
+                s["weekly"][wk]["n"] += n
+                s["weekly"][wk]["qty"] += qty
+            except (ValueError, TypeError):
+                pass
+
+    # 今月・前年同月 / 今週・前年同週 のキー
+    this_month_key = f"{_today.year}-{_today.month:02d}"
+    prev_year_same_month = f"{_today.year - 1}-{_today.month:02d}"
+    _iso_now = _today.isocalendar()
+    this_week_key = f"{_iso_now[0]}-{_iso_now[1]:02d}"
+    prev_year_same_week = f"{_iso_now[0] - 1}-{_iso_now[1]:02d}"
 
     # Python 側で combo ごとにグルーピング + 総件数計算
     from collections import defaultdict
@@ -1125,20 +1166,7 @@ def dashboard(
         for c in sorted_combos
     ) or '<tr><td colspan="3">(データなし — 新クライアントから RP 情報 (is_mixed) が届き次第表示)</td></tr>'
 
-    # ---- 予製計画 レポート HTML: 年度対比 + 総量 + 月平均 + 予製推奨 ----
-    def _fmt_yoy(cy, py):
-        """前年比 = (cy_qty / (py_qty * (cy_months/12))) - 1 の割合表示。"""
-        if not py:
-            return '<span style="color:#94a3b8">—</span>' if not cy else '<span style="color:#dc2626">NEW</span>'
-        # 年度比較のため 前年度を今年度と同じ月数に換算
-        adj_py = py * (_cy_months / 12.0)
-        if adj_py == 0:
-            return "—"
-        pct = ((cy - adj_py) / adj_py) * 100
-        color = "#059669" if pct > 5 else ("#dc2626" if pct < -5 else "#64748b")
-        arrow = "↑" if pct > 5 else ("↓" if pct < -5 else "→")
-        return f'<span style="color:{color};font-weight:600">{arrow} {pct:+.0f}%</span>'
-
+    # ---- 予製計画 レポート HTML: 同月同週対比 + 総量 + 月平均 + 予製推奨 ----
     def _fmt_qty(qty, unit):
         if not qty:
             return "0"
@@ -1146,38 +1174,103 @@ def dashboard(
             return f"{qty/1000:.1f}k{unit}"
         return f"{qty:.0f}{unit}"
 
+    def _fmt_period_cell(cur, prev, unit, bg_cur, bg_prev):
+        """今期/前期のセル: 件数上 + 量下、色分け背景"""
+        cur_n = cur.get("n", 0)
+        cur_q = cur.get("qty", 0.0)
+        prev_n = prev.get("n", 0)
+        prev_q = prev.get("qty", 0.0)
+        # 増減アイコン
+        if prev_n or prev_q:
+            diff_pct = ((cur_q - prev_q) / prev_q * 100) if prev_q else 0
+            arrow = "↑" if diff_pct > 10 else ("↓" if diff_pct < -10 else "→")
+            arrow_color = "#059669" if diff_pct > 10 else ("#dc2626" if diff_pct < -10 else "#94a3b8")
+        else:
+            arrow = "🆕" if cur_n else "—"
+            arrow_color = "#dc2626"
+        return (
+            f'<td class="num" style="background:{bg_cur};padding:4px 6px;">'
+            f'<div style="font-weight:600;">{cur_n}件</div>'
+            f'<div style="font-size:10px;color:#334155;">{_fmt_qty(cur_q, unit)}</div>'
+            f'</td>'
+            f'<td class="num" style="background:{bg_prev};padding:4px 6px;">'
+            f'<div style="color:#78350f;">{prev_n}件</div>'
+            f'<div style="font-size:10px;color:#a16207;">{_fmt_qty(prev_q, unit)}</div>'
+            f'<div style="font-size:10px;color:{arrow_color};font-weight:600;margin-top:2px;">{arrow}</div>'
+            f'</td>'
+        )
+
     planning_sorted = sorted(combo_summary.items(), key=lambda x: -x[1]["cy_qty"] if x[1]["cy_qty"] else -x[1]["total_qty"])[:50]
 
     def _planning_row(combo, s):
         unit = s["unit"] or "g"
         monthly_avg_qty = s["cy_qty"] / _cy_months if _cy_months else 0
-        monthly_avg_n = s["cy_n"] / _cy_months if _cy_months else 0
-        # 予製推奨 (2週間分 = 月平均の 0.5)
         yosei_recommend = monthly_avg_qty * 0.5
-        # MIX 量帯別 top 3
         top_qtys = sorted(s["qty_hist"].items(), key=lambda x: -x[1])[:3]
         qty_dist = " ".join(f'<span style="background:#dbeafe;color:#1e3a8a;padding:1px 6px;border-radius:8px;font-size:11px;">{q:g}{unit}×{n}</span>' for q, n in top_qtys if q)
+        # 今月/前年同月 & 今週/前年同週
+        cm = s["monthly"].get(this_month_key, {"n": 0, "qty": 0.0})
+        pm = s["monthly"].get(prev_year_same_month, {"n": 0, "qty": 0.0})
+        cw = s["weekly"].get(this_week_key, {"n": 0, "qty": 0.0})
+        pw = s["weekly"].get(prev_year_same_week, {"n": 0, "qty": 0.0})
         return (
             f'<tr>'
             f'<td style="font-size:12px;">{_h(combo)}</td>'
             f'<td class="num">{s["total_n"]:,}</td>'
             f'<td class="num" style="color:#334155">{_fmt_qty(s["total_qty"], unit)}</td>'
-            f'<td class="num" style="background:#f0fdf4">{s["cy_n"]:,}<div style="font-size:10px;color:#059669">{_fmt_qty(s["cy_qty"], unit)}</div></td>'
-            f'<td class="num" style="background:#fef3c7">{s["py_n"]:,}<div style="font-size:10px;color:#78350f">{_fmt_qty(s["py_qty"], unit)}</div></td>'
-            f'<td class="num">{_fmt_yoy(s["cy_qty"], s["py_qty"])}</td>'
-            f'<td class="num" style="background:#eff6ff"><strong>{_fmt_qty(monthly_avg_qty, unit)}</strong><div style="font-size:10px;color:#3b82f6">{monthly_avg_n:.1f}件</div></td>'
+            + _fmt_period_cell(cm, pm, unit, "#f0fdf4", "#fef3c7")  # 今月/前年同月
+            + _fmt_period_cell(cw, pw, unit, "#eff6ff", "#fef3c7")  # 今週/前年同週
+            + f'<td class="num" style="background:#f5f3ff"><strong>{_fmt_qty(monthly_avg_qty, unit)}</strong></td>'
             f'<td class="num" style="background:#fef2f2"><strong style="color:#991b1b">{_fmt_qty(yosei_recommend, unit)}</strong></td>'
             f'<td>{qty_dist}</td>'
             f'</tr>'
         )
-    planning_rows_html = "\n".join(_planning_row(c, s) for c, s in planning_sorted) or '<tr><td colspan="9">(データなし)</td></tr>'
+    planning_rows_html = "\n".join(_planning_row(c, s) for c, s in planning_sorted) or '<tr><td colspan="11">(データなし)</td></tr>'
 
     planning_report_html = (
         f'<div style="background:#f8fafc;padding:10px 14px;border-radius:6px;margin:12px 0;font-size:12px;color:#475569;">'
-        f'年度定義: 4月〜3月 &nbsp;|&nbsp; 今年度 = <strong>{_cy}年度</strong> ({cy_start[:4]}-{cy_start[4:6]}-{cy_start[6:8]} 〜 経過 <strong>{_cy_months}ヶ月</strong>) &nbsp;|&nbsp; 前年度 = <strong>{_py}年度</strong> ({py_start[:4]}-{py_start[4:6]}-{py_start[6:8]} 〜 {py_end[:4]}-{py_end[4:6]}-{py_end[6:8]})<br>'
-        f'前年比 = 前年度を今年度の経過月数に按分して比較 (公平な進捗比較) &nbsp;|&nbsp; 予製推奨量 = 月平均量 × 0.5 (2週間分)'
+        f'📅 今月 = <strong>{this_month_key}</strong> vs 前年同月 <strong>{prev_year_same_month}</strong> &nbsp;|&nbsp; '
+        f'今週 = <strong>{this_week_key}</strong> vs 前年同週 <strong>{prev_year_same_week}</strong><br>'
+        f'月平均 = 今年度 ({_cy}年度) 経過 {_cy_months}ヶ月の平均 &nbsp;|&nbsp; 予製推奨量 = 月平均量 × 0.5 (2週間分)'
         f'</div>'
     )
+
+    # ---- 週別ドリルダウン: Top10 コンボ × 直近8週 × 前年同週対比 ----
+    from datetime import timedelta as _td
+    def _week_str_from_offset(back_weeks):
+        target = _today - _td(weeks=back_weeks)
+        iso = target.isocalendar()
+        return f"{iso[0]}-{iso[1]:02d}"
+
+    recent_weeks = [_week_str_from_offset(i) for i in range(8)][::-1]  # 古い→新しい
+    prev_year_weeks = [f"{int(w[:4])-1}-{w[5:]}" for w in recent_weeks]
+
+    top10_combos_wk = sorted(combo_summary.items(), key=lambda x: -x[1]["cy_qty"] if x[1]["cy_qty"] else -x[1]["total_qty"])[:10]
+
+    def _wk_cell(cur, prev, unit):
+        cur_n = cur.get("n", 0)
+        cur_q = cur.get("qty", 0.0)
+        prev_n = prev.get("n", 0)
+        prev_q = prev.get("qty", 0.0)
+        cur_disp = f'{cur_n}<div style="font-size:9px;color:#059669">{_fmt_qty(cur_q, unit)}</div>' if cur_n else '—'
+        prev_disp = f'<div style="font-size:9px;color:#78350f">前:{prev_n}件 {_fmt_qty(prev_q, unit)}</div>' if prev_n else ''
+        return f'<td style="text-align:center;padding:4px 6px;background:{"#f0fdf4" if cur_n else "#fff"};">{cur_disp}{prev_disp}</td>'
+
+    def _weekly_row(combo, s):
+        unit = s["unit"] or "g"
+        cells = "".join(
+            _wk_cell(s["weekly"].get(recent_weeks[i], {"n":0,"qty":0.0}),
+                     s["weekly"].get(prev_year_weeks[i], {"n":0,"qty":0.0}), unit)
+            for i in range(8)
+        )
+        combo_short = combo if len(combo) < 40 else combo[:38] + "…"
+        return f'<tr><td style="font-size:11px;padding:4px 8px;background:#f8fafc;">{_h(combo_short)}</td>{cells}</tr>'
+
+    weekly_drilldown_headers = "".join(
+        f'<th style="font-size:10px;padding:4px;background:#f1f5f9;">{recent_weeks[i][2:4]}W{recent_weeks[i][5:]}</th>'
+        for i in range(8)
+    )
+    weekly_drilldown_rows = "\n".join(_weekly_row(c, s) for c, s in top10_combos_wk) or f'<tr><td colspan="9">(データなし)</td></tr>'
 
     # ---- 月別ヒートマップ: combo × month の件数 ----
     monthly_combo_map: dict = _dd(lambda: _dd(lambda: {"n": 0, "qty": 0.0}))
@@ -1378,6 +1471,8 @@ def dashboard(
         planning_rows=planning_rows_html,
         month_headers=month_header_html,
         heatmap_rows=heatmap_rows_html,
+        weekly_drill_headers=weekly_drilldown_headers,
+        weekly_drill_rows=weekly_drilldown_rows,
         form_internal=form_internal,
         form_external=form_external,
         form_injection=form_injection,
