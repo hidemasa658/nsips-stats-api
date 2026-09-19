@@ -301,7 +301,20 @@ tr:hover {{ background: #f9f9f9; }}
 </style>
 </head>
 <body>
-<h1>💊 nsips-stats ダッシュボード</h1>
+<h1>💊 nsips-stats ダッシュボード <span style="font-size:14px;color:#64748b;font-weight:normal;">— {period_label}</span></h1>
+
+<style>
+.tabs {{ display: flex; gap: 4px; margin: 16px 0; flex-wrap: wrap; }}
+.tab {{ padding: 8px 16px; background: #f1f5f9; color: #475569; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; transition: all 0.15s; }}
+.tab:hover {{ background: #e2e8f0; color: #0f172a; }}
+.tab.active {{ background: #3b82f6; color: white; }}
+</style>
+<div class="tabs">
+  <a class="tab {tab_today}" href="?token={token_qs}&period=today">今日</a>
+  <a class="tab {tab_yesterday}" href="?token={token_qs}&period=yesterday">昨日</a>
+  <a class="tab {tab_month}" href="?token={token_qs}&period=month">今月</a>
+  <a class="tab {tab_all}" href="?token={token_qs}&period=all">全期間</a>
+</div>
 
 <style>
 .kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 16px 0; }}
@@ -443,6 +456,7 @@ def _h(v) -> str:
 def dashboard(
     x_api_token: str | None = Header(default=None),
     token: str | None = Query(default=None),
+    period: str | None = Query(default="all"),  # all / today / yesterday / month / YYYYMM
 ) -> HTMLResponse:
     provided = x_api_token or token
     if not API_TOKEN or provided != API_TOKEN:
@@ -450,11 +464,37 @@ def dashboard(
 
     conn = get_conn()
 
-    prescription_count = conn.execute("SELECT COUNT(*) FROM prescriptions").fetchone()[0]
-    drug_kinds = conn.execute("SELECT COUNT(DISTINCT yj_code) FROM drugs WHERE yj_code IS NOT NULL").fetchone()[0]
+    # ---- 期間フィルタ ----
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    today_str = now.strftime("%Y%m%d")
+    yesterday_str = (now - timedelta(days=1)).strftime("%Y%m%d")
+    this_month = now.strftime("%Y%m")
+
+    if period == "today":
+        period_where = f"COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)) = '{today_str}'"
+        period_label = f"今日 ({now:%Y-%m-%d})"
+    elif period == "yesterday":
+        period_where = f"COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)) = '{yesterday_str}'"
+        period_label = f"昨日 ({(now - timedelta(days=1)):%Y-%m-%d})"
+    elif period == "month":
+        period_where = f"SUBSTR(COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)), 1, 6) = '{this_month}'"
+        period_label = f"今月 ({now:%Y-%m})"
+    elif period and len(period) == 6 and period.isdigit():
+        period_where = f"SUBSTR(COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)), 1, 6) = '{period}'"
+        period_label = f"{period[:4]}-{period[4:6]}"
+    else:
+        period_where = "1=1"
+        period_label = "全期間"
+        period = "all"
+
+    prescription_count = conn.execute(f"SELECT COUNT(*) FROM prescriptions WHERE {period_where}").fetchone()[0]
+    drug_kinds = conn.execute(
+        f"SELECT COUNT(DISTINCT d.yj_code) FROM drugs d JOIN prescriptions p ON d.prescription_id = p.id WHERE d.yj_code IS NOT NULL AND {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}"
+    ).fetchone()[0]
 
     drug_data = conn.execute(
-        """SELECT d.yj_code,
+        f"""SELECT d.yj_code,
                   COALESCE(dm.name, d.name) AS drug_name,
                   COALESCE(dm.unit, d.unit) AS drug_unit,
                   dm.usage_category,
@@ -465,7 +505,9 @@ def dashboard(
                   SUM(d.total_quantity) AS qty,
                   SUM(CASE WHEN d.total_quantity IS NOT NULL THEN 1 ELSE 0 END) AS valid_n
            FROM drugs d
+           JOIN prescriptions p ON d.prescription_id = p.id
            LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
+           WHERE {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}
            GROUP BY d.yj_code, drug_name, drug_unit, dm.usage_category, d.form, dm.unit_price, dm.generic_name
            ORDER BY n DESC, qty DESC LIMIT 50"""
     ).fetchall()
@@ -661,28 +703,32 @@ def dashboard(
         for r in monthly_data
     ) or '<tr><td colspan="4">(データなし)</td></tr>'
 
-    # record 5 全体集計の累計 (経営指標)
+    # record 5 全体集計の累計 (経営指標、期間フィルタ適用)
     t_agg = conn.execute(
-        """SELECT
+        f"""SELECT
              COALESCE(SUM(total_points), 0) AS total_points,
              COALESCE(SUM(patient_copay), 0) AS patient_copay,
              COALESCE(SUM(dispensing_base_fee), 0) AS dispensing_base,
              COALESCE(SUM(night_holiday_fee), 0) AS night_holiday,
              COALESCE(SUM(management_fee), 0) AS management,
              COALESCE(SUM(long_prescription_fee), 0) AS long_prescription
-           FROM prescriptions"""
+           FROM prescriptions
+           WHERE {period_where}"""
     ).fetchone()
 
-    # 基本料 (record 6 基本料バリアント) の累計
+    # 基本料 (record 6 基本料バリアント) の累計、期間フィルタ
+    dp_where = period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')
     dp_agg = conn.execute(
-        """SELECT
-             COALESCE(SUM(dispensing_fee), 0) AS total_dispensing,
-             COALESCE(SUM(drug_fee_per_unit * quantity), 0) AS total_drug_fee,
-             COALESCE(SUM(internal_dispensing_fee), 0) AS internal_dispensing_total,
-             COALESCE(SUM(CASE WHEN internal_dispensing_fee = 60 THEN 1 ELSE 0 END), 0) AS long_count,
-             COALESCE(SUM(CASE WHEN internal_dispensing_fee = 10 THEN 1 ELSE 0 END), 0) AS short_count,
+        f"""SELECT
+             COALESCE(SUM(dp.dispensing_fee), 0) AS total_dispensing,
+             COALESCE(SUM(dp.drug_fee_per_unit * dp.quantity), 0) AS total_drug_fee,
+             COALESCE(SUM(dp.internal_dispensing_fee), 0) AS internal_dispensing_total,
+             COALESCE(SUM(CASE WHEN dp.internal_dispensing_fee = 60 THEN 1 ELSE 0 END), 0) AS long_count,
+             COALESCE(SUM(CASE WHEN dp.internal_dispensing_fee = 10 THEN 1 ELSE 0 END), 0) AS short_count,
              COUNT(*) AS n
-           FROM drug_pricings"""
+           FROM drug_pricings dp
+           JOIN prescriptions p ON dp.prescription_id = p.id
+           WHERE {dp_where}"""
     ).fetchone()
     dp_total_dispensing = dp_agg["total_dispensing"]
     dp_total_drug_fee = dp_agg["total_drug_fee"]
@@ -691,10 +737,10 @@ def dashboard(
     dp_short_count = dp_agg["short_count"]
     dp_count = dp_agg["n"]
 
-    # 剤形別 サマリー (YJ 5-7桁 で判別、フォールバックは client form)
+    # 剤形別 サマリー (YJ 5-7桁 で判別、期間フィルタ)
     form_summary = dict(
         conn.execute(
-            """SELECT
+            f"""SELECT
                  CASE
                    WHEN LENGTH(d.yj_code) >= 7 AND SUBSTR(d.yj_code, 5, 3) GLOB '[0-9][0-9][0-9]' AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 1 AND 399 THEN '内用'
                    WHEN LENGTH(d.yj_code) >= 7 AND SUBSTR(d.yj_code, 5, 3) GLOB '[0-9][0-9][0-9]' AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 400 AND 699 THEN '注射'
@@ -703,6 +749,8 @@ def dashboard(
                  END AS cat,
                  COUNT(*)
                FROM drugs d
+               JOIN prescriptions p ON d.prescription_id = p.id
+               WHERE {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}
                GROUP BY cat"""
         ).fetchall()
     )
@@ -837,6 +885,12 @@ def dashboard(
         yesterday_count=yesterday_agg["n"],
         yesterday_points=yesterday_agg["pts"],
         yesterday_copay=yesterday_agg["cp"],
+        period_label=period_label,
+        token_qs=provided,
+        tab_today="active" if period == "today" else "",
+        tab_yesterday="active" if period == "yesterday" else "",
+        tab_month="active" if period == "month" else "",
+        tab_all="active" if period == "all" else "",
         dp_total_dispensing=dp_total_dispensing,
         dp_total_drug_fee=dp_total_drug_fee,
         dp_count=dp_count,
