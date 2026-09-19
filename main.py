@@ -327,14 +327,14 @@ tr:hover {{ background: #f9f9f9; }}
 .kpi-section-title {{ font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 20px 0 4px; padding-left: 4px; }}
 </style>
 
-<div class="kpi-section-title">今日 / 昨日 (調剤日ベース)</div>
+<div class="kpi-section-title">{main_label} / {cmp_label} (調剤日ベース)</div>
 <div class="kpi-grid">
-  <div class="kpi accent-green"><div class="val">{today_count}</div><div class="lbl">今日の処方件数</div></div>
-  <div class="kpi accent-green"><div class="val">{today_points:,}</div><div class="lbl">今日の請求点数</div></div>
-  <div class="kpi accent-green"><div class="val">{today_copay:,}</div><div class="lbl">今日の患者負担金</div></div>
-  <div class="kpi"><div class="val">{yesterday_count}</div><div class="lbl">昨日の処方件数</div></div>
-  <div class="kpi"><div class="val">{yesterday_points:,}</div><div class="lbl">昨日の請求点数</div></div>
-  <div class="kpi"><div class="val">{yesterday_copay:,}</div><div class="lbl">昨日の患者負担金</div></div>
+  <div class="kpi accent-green"><div class="val">{main_count}</div><div class="lbl">{main_label} 処方件数</div></div>
+  <div class="kpi accent-green"><div class="val">{main_points:,}</div><div class="lbl">{main_label} 請求点数</div></div>
+  <div class="kpi accent-green"><div class="val">{main_copay:,}</div><div class="lbl">{main_label} 患者負担金</div></div>
+  <div class="kpi"><div class="val">{cmp_count}</div><div class="lbl">{cmp_label} 処方件数</div></div>
+  <div class="kpi"><div class="val">{cmp_points:,}</div><div class="lbl">{cmp_label} 請求点数</div></div>
+  <div class="kpi"><div class="val">{cmp_copay:,}</div><div class="lbl">{cmp_label} 患者負担金</div></div>
 </div>
 
 <div class="kpi-section-title">基本 (全期間)</div>
@@ -648,24 +648,50 @@ def dashboard(
         for r in ingredient_data
     ) or '<tr><td colspan="5">(データなし)</td></tr>'
 
-    # 今日 / 昨日 サマリー (dispense_date 優先、無ければ detected_at 日付)
-    from datetime import datetime, timedelta
-    today = datetime.now().strftime("%Y%m%d")
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-
-    def _period_agg(date_str: str) -> dict:
+    # 選択タブに応じた 主 KPI と 比較 KPI (dispense_date ベース)
+    def _kpi_by_where(where_clause: str) -> dict:
         row = conn.execute(
-            """SELECT COUNT(*) n,
-                      COALESCE(SUM(total_points), 0) pts,
-                      COALESCE(SUM(patient_copay), 0) cp
-               FROM prescriptions
-               WHERE COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)) = ?""",
-            (date_str,),
+            f"""SELECT COUNT(*) n,
+                       COALESCE(SUM(total_points), 0) pts,
+                       COALESCE(SUM(patient_copay), 0) cp
+                FROM prescriptions
+                WHERE {where_clause}"""
         ).fetchone()
         return {"n": row["n"], "pts": row["pts"], "cp": row["cp"]}
 
-    today_agg = _period_agg(today)
-    yesterday_agg = _period_agg(yesterday)
+    def _by_date(d: str) -> str:
+        return f"COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)) = '{d}'"
+
+    def _by_month(m: str) -> str:
+        return f"SUBSTR(COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)), 1, 6) = '{m}'"
+
+    today_str_ = now.strftime("%Y%m%d")
+    yday_str = (now - timedelta(days=1)).strftime("%Y%m%d")
+    dbyday = (now - timedelta(days=2)).strftime("%Y%m%d")
+    this_month_ = now.strftime("%Y%m")
+    last_month_dt = (now.replace(day=1) - timedelta(days=1))
+    last_month = last_month_dt.strftime("%Y%m")
+
+    if period == "yesterday":
+        main_agg = _kpi_by_where(_by_date(yday_str))
+        cmp_agg = _kpi_by_where(_by_date(dbyday))
+        main_label = f"昨日 ({(now - timedelta(days=1)):%m-%d})"
+        cmp_label = f"一昨日 ({(now - timedelta(days=2)):%m-%d})"
+    elif period == "month":
+        main_agg = _kpi_by_where(_by_month(this_month_))
+        cmp_agg = _kpi_by_where(_by_month(last_month))
+        main_label = f"今月 ({now:%Y-%m})"
+        cmp_label = f"先月 ({last_month_dt:%Y-%m})"
+    elif period == "all":
+        main_agg = _kpi_by_where("1=1")
+        cmp_agg = _kpi_by_where(_by_month(this_month_))
+        main_label = "全期間 (累計)"
+        cmp_label = f"今月 ({now:%Y-%m})"
+    else:  # today (default)
+        main_agg = _kpi_by_where(_by_date(today_str_))
+        cmp_agg = _kpi_by_where(_by_date(yday_str))
+        main_label = f"今日 ({now:%m-%d})"
+        cmp_label = f"昨日 ({(now - timedelta(days=1)):%m-%d})"
 
     # 日別集計 (直近 30 日、dispense_date 優先)
     daily_data = conn.execute(
@@ -879,12 +905,14 @@ def dashboard(
         daily_rows=daily_rows_html,
         monthly_rows=monthly_rows_html,
         ingredient_rows=ingredient_rows_html,
-        today_count=today_agg["n"],
-        today_points=today_agg["pts"],
-        today_copay=today_agg["cp"],
-        yesterday_count=yesterday_agg["n"],
-        yesterday_points=yesterday_agg["pts"],
-        yesterday_copay=yesterday_agg["cp"],
+        main_count=main_agg["n"],
+        main_points=main_agg["pts"],
+        main_copay=main_agg["cp"],
+        cmp_count=cmp_agg["n"],
+        cmp_points=cmp_agg["pts"],
+        cmp_copay=cmp_agg["cp"],
+        main_label=main_label,
+        cmp_label=cmp_label,
         period_label=period_label,
         token_qs=provided,
         tab_today="active" if period == "today" else "",
