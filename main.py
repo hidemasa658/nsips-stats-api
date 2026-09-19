@@ -1132,6 +1132,12 @@ def dashboard(
     _cy_end_date = _today if _today.year == _cy else datetime(_cy + 1, 3, 31).date()
     _cy_months = max(1, (_cy_end_date.year - _cy) * 12 + _cy_end_date.month - 4 + 1)
 
+    # 前年同月の期間 (YYYYMMDD 文字列で比較用) — combos_data ループより前に定義必須
+    prev_ym_start = f"{_today.year - 1}{_today.month:02d}01"
+    from calendar import monthrange as _mr
+    _last_day = _mr(_today.year - 1, _today.month)[1]
+    prev_ym_end = f"{_today.year - 1}{_today.month:02d}{_last_day:02d}"
+
     # 混合処方: combo × 量 で集計 → Python で combo ごとに内訳を組立
     combos_data = conn.execute(
         f"""
@@ -1209,16 +1215,6 @@ def dashboard(
     _iso_now = _today.isocalendar()
     this_week_key = f"{_iso_now[0]}-{_iso_now[1]:02d}"
     prev_year_same_week = f"{_iso_now[0] - 1}-{_iso_now[1]:02d}"
-
-    # 前年同月の期間 (YYYYMMDD 文字列で比較用)
-    prev_ym_start = f"{_today.year - 1}{_today.month:02d}01"
-    if _today.month == 12:
-        prev_ym_end = f"{_today.year - 1}1231"
-    else:
-        # 前年の翌月1日の前日
-        from calendar import monthrange as _mr
-        _last_day = _mr(_today.year - 1, _today.month)[1]
-        prev_ym_end = f"{_today.year - 1}{_today.month:02d}{_last_day:02d}"
 
     # Python 側で combo ごとにグルーピング + 総件数計算
     from collections import defaultdict
