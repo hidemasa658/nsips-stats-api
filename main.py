@@ -436,15 +436,6 @@ tr:hover {{ background: #f9f9f9; }}
   </div>
 </div>
 
-<h2>成分別 累計 (YJ 1〜7 桁: 同一成分でまとめる)</h2>
-<p style="color:#64748b;font-size:12px;">同じ成分の 先発品・後発品・別剤形をまとめて集計。品目数 &gt; 1 は同じ成分の複数バリエーションが処方された = 後発切替検討や剤形選択の余地あり。</p>
-<table>
-<thead><tr><th>YJ (1-7)</th><th>成分 (代表薬品名 / 一般名)</th><th class="num">品目数</th><th class="num">調剤回数</th><th class="num">総数量</th></tr></thead>
-<tbody>
-{ingredient_rows}
-</tbody>
-</table>
-
 <h2>薬剤別累計 (調剤回数上位 50 品目)</h2>
 <style>
 .badge {{ display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }}
@@ -487,6 +478,15 @@ details pre {{ background: #1e293b; color: #e2e8f0; padding: 12px; border-radius
 .meta {{ color: #64748b; font-size: 12px; margin-left: 12px; }}
 </style>
 {recent_rows}
+
+<h2>成分別 累計 (YJ 1〜7 桁: 同一成分でまとめる)</h2>
+<p style="color:#64748b;font-size:12px;">同じ成分の 先発品・後発品・別剤形をまとめて集計。品目数 &gt; 1 は同じ成分の複数バリエーションが処方された = 後発切替検討や剤形選択の余地あり。</p>
+<table>
+<thead><tr><th>YJ (1-7)</th><th>成分 (代表薬品名 / 一般名)</th><th class="num">品目数</th><th class="num">調剤回数</th><th class="num">総数量</th></tr></thead>
+<tbody>
+{ingredient_rows}
+</tbody>
+</table>
 
 <div class="updated">最終更新: {now} (60秒ごとに自動再読込)</div>
 </body>
