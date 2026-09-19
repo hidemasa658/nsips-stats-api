@@ -290,7 +290,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="refresh" content="300">
+<meta http-equiv="refresh" content="600">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <title>nsips-stats ダッシュボード</title>
@@ -609,7 +609,7 @@ tr:hover {{ background: #f9f9f9; }}
 </table>
 </details>
 
-<div class="updated">最終更新: {now} (60秒ごとに自動再読込)</div>
+<div class="updated">最終更新: {now} (10分ごとに自動再読込)</div>
 </body>
 </html>
 """
