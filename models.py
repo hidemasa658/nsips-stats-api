@@ -55,7 +55,8 @@ class TotalsIn(BaseModel):
     dispensing_add_fee: int | None = None      # [8] 調剤加算 (計量混合加算等)
     drug_guidance_fee: int | None = None       # [9] 服薬管理指導料
     pharmacy_mgmt_other: int | None = None     # [11] 薬学管理料 (服管以外)
-    patient_copay: int | None = None           # [13] 患者負担金 (円)
+    patient_copay: int | None = None           # [13] 患者負担金 (保険内のみ)
+    patient_copay_total: int | None = None     # [17] 総患者負担額 (保険内+選定療養)
     # 旧名 (互換): night_holiday_fee, management_fee, long_prescription_fee
     night_holiday_fee: int | None = None       # 廃止 (旧 [8] 誤名)
     management_fee: int | None = None          # 廃止 (旧 [9] 誤名)

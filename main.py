@@ -74,8 +74,8 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
            prescription_date_enc, doctor_name_enc,
            total_points, drug_fee, dispensing_fee_total, pharmacy_mgmt_fee_total,
            dispensing_base_fee, dispensing_add_fee, drug_guidance_fee,
-           pharmacy_mgmt_other, patient_copay)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           pharmacy_mgmt_other, patient_copay, patient_copay_total)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payload.source_id,
@@ -96,6 +96,7 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
             t.drug_guidance_fee if t else None,
             t.pharmacy_mgmt_other if t else None,
             t.patient_copay if t else None,
+            t.patient_copay_total if t else None,
         ),
     )
     presc_id = cur.lastrowid
@@ -399,8 +400,11 @@ tr:hover {{ background: #f9f9f9; }}
 
     <tr class="grand"><td>合　計 (請求点数)<span class="item-code" style="color:#94a3b8">[5]</span></td>
         <td class="num">{t_total_points:,} 点</td></tr>
-    <tr class="copay"><td>患者負担金<span class="item-code" style="color:#a16207">[13]</span></td>
+    <tr class="copay"><td>患者負担金 (保険内)<span class="item-code" style="color:#a16207">[13]</span></td>
         <td class="num">{t_patient_copay:,} 円</td></tr>
+    {senteryoyo_row}
+    <tr class="copay"><td>総患者負担額<span class="item-code" style="color:#a16207">[17]</span></td>
+        <td class="num">{t_patient_copay_total:,} 円</td></tr>
   </table>
 </div>
 
@@ -786,7 +790,12 @@ def dashboard(
              COALESCE(SUM(dispensing_base_fee), 0) AS dispensing_base,
              COALESCE(SUM(dispensing_add_fee), 0) AS dispensing_add,
              COALESCE(SUM(drug_guidance_fee), 0) AS drug_guidance,
-             COALESCE(SUM(pharmacy_mgmt_other), 0) AS pharmacy_mgmt_other
+             COALESCE(SUM(pharmacy_mgmt_other), 0) AS pharmacy_mgmt_other,
+             COALESCE(SUM(patient_copay_total), 0) AS patient_copay_total,
+             COALESCE(SUM(CASE WHEN COALESCE(patient_copay_total, 0) > COALESCE(patient_copay, 0)
+                               THEN patient_copay_total - patient_copay ELSE 0 END), 0) AS senteryoyo_total,
+             COALESCE(SUM(CASE WHEN COALESCE(patient_copay_total, 0) > COALESCE(patient_copay, 0)
+                               THEN 1 ELSE 0 END), 0) AS senteryoyo_count
            FROM prescriptions
            WHERE {period_where}"""
     ).fetchone()
@@ -984,6 +993,11 @@ def dashboard(
         t_drug_guidance=t_agg["drug_guidance"],
         t_pharmacy_mgmt_other=t_agg["pharmacy_mgmt_other"],
         t_tech_subtotal=(t_agg["dispensing_base"] + t_agg["dispensing_fee_total"] + t_agg["dispensing_add"]),
+        t_patient_copay_total=t_agg["patient_copay_total"],
+        senteryoyo_row=(
+            f'<tr class="copay" style="background:#fee2e2;color:#991b1b"><td>うち選定療養費 (長期収載品) <span class="item-code" style="color:#991b1b">{t_agg["senteryoyo_count"]}件</span></td><td class="num">+{t_agg["senteryoyo_total"]:,} 円</td></tr>'
+            if t_agg["senteryoyo_total"] > 0 else ""
+        ),
         recent_rows=recent_rows_html,
         now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )

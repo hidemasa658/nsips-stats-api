@@ -155,7 +155,9 @@ def parse_nsips(body: str) -> dict:
             # [8] 調剤加算 (計量混合加算等、R6 内加算と一致)
             # [9] 服薬管理指導料 本体
             # [11] 薬学管理料の残り (調剤管理料+特薬管等)
-            # [13] 患者負担金 (円、割合適用済)
+            # [13] 患者負担金 (円、割合適用済、保険内のみ)
+            # [17][18][19] 総患者負担額 (保険内 + 選定療養費) — 通常同じ値
+            #   選定療養費 = [17] - [13] (長期収載品を選択した場合の追加負担)
             result["totals"] = {
                 "drug_fee": _to_int(_col(fields, 1)),
                 "dispensing_fee_total": _to_int(_col(fields, 2)),
@@ -166,6 +168,7 @@ def parse_nsips(body: str) -> dict:
                 "drug_guidance_fee": _to_int(_col(fields, 9)),
                 "pharmacy_mgmt_other": _to_int(_col(fields, 11)),
                 "patient_copay": _to_int(_col(fields, 13)),
+                "patient_copay_total": _to_int(_col(fields, 17)),
             }
 
         elif rec == "2":
