@@ -93,17 +93,22 @@ def reparse_all(db_path: Path) -> tuple[int, int]:
         conn.execute(
             """UPDATE prescriptions SET
                  total_points = ?,
+                 drug_fee = ?,
+                 dispensing_fee_total = ?,
+                 pharmacy_mgmt_fee_total = ?,
                  dispensing_base_fee = ?,
-                 night_holiday_fee = ?,
-                 management_fee = ?,
-                 long_prescription_fee = ?,
+                 dispensing_add_fee = ?,
+                 drug_guidance_fee = ?,
+                 pharmacy_mgmt_other = ?,
                  patient_copay = ?,
                  dispense_date = COALESCE(?, dispense_date),
                  dispensed_at = COALESCE(?, dispensed_at)
                WHERE id = ?""",
-            (t.get("total_points"), t.get("dispensing_base_fee"),
-             t.get("night_holiday_fee"), t.get("management_fee"),
-             t.get("long_prescription_fee"), t.get("patient_copay"),
+            (t.get("total_points"), t.get("drug_fee"),
+             t.get("dispensing_fee_total"), t.get("pharmacy_mgmt_fee_total"),
+             t.get("dispensing_base_fee"), t.get("dispensing_add_fee"),
+             t.get("drug_guidance_fee"), t.get("pharmacy_mgmt_other"),
+             t.get("patient_copay"),
              parsed.get("dispense_date"), parsed.get("dispensed_at"),
              pid),
         )

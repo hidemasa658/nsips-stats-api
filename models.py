@@ -47,12 +47,19 @@ class FeeIn(BaseModel):
 
 
 class TotalsIn(BaseModel):
-    total_points: int | None = None
-    dispensing_base_fee: int | None = None
-    night_holiday_fee: int | None = None
-    management_fee: int | None = None
-    long_prescription_fee: int | None = None
-    patient_copay: int | None = None
+    total_points: int | None = None            # [5] 請求点数
+    drug_fee: int | None = None                # [1] 薬剤料
+    dispensing_fee_total: int | None = None    # [2] 調剤料
+    pharmacy_mgmt_fee_total: int | None = None # [3] 薬学管理料
+    dispensing_base_fee: int | None = None     # [7] 調剤基本料
+    dispensing_add_fee: int | None = None      # [8] 調剤加算 (計量混合加算等)
+    drug_guidance_fee: int | None = None       # [9] 服薬管理指導料
+    pharmacy_mgmt_other: int | None = None     # [11] 薬学管理料 (服管以外)
+    patient_copay: int | None = None           # [13] 患者負担金 (円)
+    # 旧名 (互換): night_holiday_fee, management_fee, long_prescription_fee
+    night_holiday_fee: int | None = None       # 廃止 (旧 [8] 誤名)
+    management_fee: int | None = None          # 廃止 (旧 [9] 誤名)
+    long_prescription_fee: int | None = None   # 廃止 (旧 [11] 誤名)
 
 
 class IngestPayload(BaseModel):

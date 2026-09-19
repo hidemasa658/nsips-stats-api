@@ -145,16 +145,26 @@ def parse_nsips(body: str) -> dict:
             continue
 
         if rec == "5":
-            # record 5: 全体集計。
-            # [5] 請求点数、[7] 調剤基本料、[8] 夜間・休日等加算、
-            # [9] 薬学管理料、[11] 長期処方加算 (28日以上=60点 / 27日以下=10点)、
-            # [13] 患者負担金 (3割等)
+            # record 5: 全体集計。全40件で検算成立:
+            #   [1]+[2]+[3]+[7]+[8] = [5]
+            # [1] 薬剤料合計 (R6 薬剤単価×数量 合計と一致)
+            # [2] 調剤料合計 (R6 dispensing_fee 合計と一致)
+            # [3] 薬学管理料合計 (= [9]+[11]+物価対応料)
+            # [5] 請求点数合計
+            # [7] 調剤基本料 (+地域加算 込みの定額)
+            # [8] 調剤加算 (計量混合加算等、R6 内加算と一致)
+            # [9] 服薬管理指導料 本体
+            # [11] 薬学管理料の残り (調剤管理料+特薬管等)
+            # [13] 患者負担金 (円、割合適用済)
             result["totals"] = {
+                "drug_fee": _to_int(_col(fields, 1)),
+                "dispensing_fee_total": _to_int(_col(fields, 2)),
+                "pharmacy_mgmt_fee_total": _to_int(_col(fields, 3)),
                 "total_points": _to_int(_col(fields, 5)),
                 "dispensing_base_fee": _to_int(_col(fields, 7)),
-                "night_holiday_fee": _to_int(_col(fields, 8)),
-                "management_fee": _to_int(_col(fields, 9)),
-                "long_prescription_fee": _to_int(_col(fields, 11)),
+                "dispensing_add_fee": _to_int(_col(fields, 8)),
+                "drug_guidance_fee": _to_int(_col(fields, 9)),
+                "pharmacy_mgmt_other": _to_int(_col(fields, 11)),
                 "patient_copay": _to_int(_col(fields, 13)),
             }
 

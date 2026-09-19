@@ -72,9 +72,10 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
           (source_id, detected_at, dispense_date, dispensed_at,
            body_sanitized, clinic_code_enc, clinic_name_enc,
            prescription_date_enc, doctor_name_enc,
-           total_points, dispensing_base_fee, night_holiday_fee,
-           management_fee, long_prescription_fee, patient_copay)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           total_points, drug_fee, dispensing_fee_total, pharmacy_mgmt_fee_total,
+           dispensing_base_fee, dispensing_add_fee, drug_guidance_fee,
+           pharmacy_mgmt_other, patient_copay)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payload.source_id,
@@ -87,10 +88,13 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
             payload.prescription_date_enc,
             payload.doctor_name_enc,
             t.total_points if t else None,
+            t.drug_fee if t else None,
+            t.dispensing_fee_total if t else None,
+            t.pharmacy_mgmt_fee_total if t else None,
             t.dispensing_base_fee if t else None,
-            t.night_holiday_fee if t else None,
-            t.management_fee if t else None,
-            t.long_prescription_fee if t else None,
+            t.dispensing_add_fee if t else None,
+            t.drug_guidance_fee if t else None,
+            t.pharmacy_mgmt_other if t else None,
             t.patient_copay if t else None,
         ),
     )
@@ -322,6 +326,7 @@ tr:hover {{ background: #f9f9f9; }}
 .kpi.accent-orange {{ border-left-color: #f59e0b; background: #fffbeb; }}
 .kpi.accent-green {{ border-left-color: #10b981; background: #ecfdf5; }}
 .kpi.accent-purple {{ border-left-color: #8b5cf6; background: #f5f3ff; }}
+.kpi.accent-blue {{ border-left-color: #3b82f6; background: #eff6ff; }}
 .kpi .val {{ font-size: 22px; font-weight: bold; color: #0f172a; font-variant-numeric: tabular-nums; }}
 .kpi .lbl {{ font-size: 11px; color: #475569; margin-top: 2px; }}
 .kpi-section-title {{ font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 20px 0 4px; padding-left: 4px; }}
@@ -348,14 +353,17 @@ tr:hover {{ background: #f9f9f9; }}
   <div class="kpi accent-orange"><div class="val">{mix_total}</div><div class="lbl">計量混合加算 件数</div></div>
 </div>
 
-<div class="kpi-section-title">経営集計 (record 5)</div>
+<div class="kpi-section-title">経営集計 (record 5 内訳)</div>
 <div class="kpi-grid">
-  <div class="kpi accent-green"><div class="val">{t_total_points:,}</div><div class="lbl">総請求点数</div></div>
-  <div class="kpi accent-green"><div class="val">{t_patient_copay:,}</div><div class="lbl">総患者負担金 (円)</div></div>
-  <div class="kpi"><div class="val">{t_dispensing_base:,}</div><div class="lbl">調剤基本料</div></div>
-  <div class="kpi"><div class="val">{t_night_holiday:,}</div><div class="lbl">夜間・休日等加算</div></div>
-  <div class="kpi"><div class="val">{t_management:,}</div><div class="lbl">薬学管理料</div></div>
-  <div class="kpi"><div class="val">{t_long_prescription:,}</div><div class="lbl">長期処方関連</div></div>
+  <div class="kpi accent-green"><div class="val">{t_total_points:,}</div><div class="lbl">総請求点数 [5]</div></div>
+  <div class="kpi accent-green"><div class="val">{t_patient_copay:,}</div><div class="lbl">総患者負担金 (円) [13]</div></div>
+  <div class="kpi accent-blue"><div class="val">{t_drug_fee:,}</div><div class="lbl">薬剤料 [1]</div></div>
+  <div class="kpi accent-blue"><div class="val">{t_dispensing_fee_total:,}</div><div class="lbl">調剤料 [2]</div></div>
+  <div class="kpi accent-blue"><div class="val">{t_pharmacy_mgmt_fee_total:,}</div><div class="lbl">薬学管理料 [3]</div></div>
+  <div class="kpi"><div class="val">{t_dispensing_base:,}</div><div class="lbl">調剤基本料 [7]</div></div>
+  <div class="kpi"><div class="val">{t_dispensing_add:,}</div><div class="lbl">調剤加算 (混合等) [8]</div></div>
+  <div class="kpi"><div class="val">{t_drug_guidance:,}</div><div class="lbl">服薬管理指導料 [9]</div></div>
+  <div class="kpi"><div class="val">{t_pharmacy_mgmt_other:,}</div><div class="lbl">薬管その他 (調剤管理料等) [11]</div></div>
 </div>
 
 <div class="kpi-section-title">基本料 累計 (record 6 基本料バリアント)</div>
@@ -734,10 +742,13 @@ def dashboard(
         f"""SELECT
              COALESCE(SUM(total_points), 0) AS total_points,
              COALESCE(SUM(patient_copay), 0) AS patient_copay,
+             COALESCE(SUM(drug_fee), 0) AS drug_fee,
+             COALESCE(SUM(dispensing_fee_total), 0) AS dispensing_fee_total,
+             COALESCE(SUM(pharmacy_mgmt_fee_total), 0) AS pharmacy_mgmt_fee_total,
              COALESCE(SUM(dispensing_base_fee), 0) AS dispensing_base,
-             COALESCE(SUM(night_holiday_fee), 0) AS night_holiday,
-             COALESCE(SUM(management_fee), 0) AS management,
-             COALESCE(SUM(long_prescription_fee), 0) AS long_prescription
+             COALESCE(SUM(dispensing_add_fee), 0) AS dispensing_add,
+             COALESCE(SUM(drug_guidance_fee), 0) AS drug_guidance,
+             COALESCE(SUM(pharmacy_mgmt_other), 0) AS pharmacy_mgmt_other
            FROM prescriptions
            WHERE {period_where}"""
     ).fetchone()
@@ -927,10 +938,13 @@ def dashboard(
         dp_short_count=dp_short_count,
         t_total_points=t_agg["total_points"],
         t_patient_copay=t_agg["patient_copay"],
+        t_drug_fee=t_agg["drug_fee"],
+        t_dispensing_fee_total=t_agg["dispensing_fee_total"],
+        t_pharmacy_mgmt_fee_total=t_agg["pharmacy_mgmt_fee_total"],
         t_dispensing_base=t_agg["dispensing_base"],
-        t_night_holiday=t_agg["night_holiday"],
-        t_management=t_agg["management"],
-        t_long_prescription=t_agg["long_prescription"],
+        t_dispensing_add=t_agg["dispensing_add"],
+        t_drug_guidance=t_agg["drug_guidance"],
+        t_pharmacy_mgmt_other=t_agg["pharmacy_mgmt_other"],
         recent_rows=recent_rows_html,
         now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
