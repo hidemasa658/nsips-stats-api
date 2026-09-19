@@ -511,7 +511,30 @@ tr:hover {{ background: #f9f9f9; }}
 <h3 style="font-size:14px;margin:20px 0 8px;color:#475569;">週次トレンド (直近 26 週)</h3>
 <div class="chart-wrap">{weekly_chart}</div>
 
-<h3 style="font-size:14px;margin:20px 0 8px;color:#475569;">混合組合せ 累計 (上位 30)</h3>
+<h3 style="font-size:14px;margin:24px 0 8px;color:#475569;">📊 予製計画レポート — 年度対比 (件数上位 50 組合せ)</h3>
+{planning_report}
+<div style="overflow-x:auto;">
+<table style="font-size:13px;">
+<thead>
+  <tr>
+    <th>組合せ</th>
+    <th class="num">累計 件数</th>
+    <th class="num">累計 量</th>
+    <th class="num" style="background:#f0fdf4;">今年度<br><span style="font-weight:normal;font-size:10px;color:#059669">件 / 量</span></th>
+    <th class="num" style="background:#fef3c7;">前年度<br><span style="font-weight:normal;font-size:10px;color:#78350f">件 / 量</span></th>
+    <th class="num">前年比<br><span style="font-weight:normal;font-size:10px;color:#94a3b8">月数按分</span></th>
+    <th class="num" style="background:#eff6ff;">月平均<br><span style="font-weight:normal;font-size:10px;color:#3b82f6">量 / 件数</span></th>
+    <th class="num" style="background:#fef2f2;">予製推奨<br><span style="font-weight:normal;font-size:10px;color:#991b1b">2週間分</span></th>
+    <th>頻出 MIX 量 (上位3)</th>
+  </tr>
+</thead>
+<tbody>
+{planning_rows}
+</tbody>
+</table>
+</div>
+
+<h3 style="font-size:14px;margin:24px 0 8px;color:#475569;">混合組合せ 累計 (上位 30)</h3>
 <p style="color:#64748b;font-size:12px;">record 3 field 5 が「混合」の RP + 外用剤 (M/N/Q/X/U/P) の組合せのみ集計。MIX 量 = 同 RP 内の外用剤 総処方量の合計。「30g × 5件」= 合計 30g の混合が 5 回。</p>
 <table>
 <thead><tr><th class="num">総件数</th><th>混合された薬剤の組合せ</th><th>MIX 量別 内訳 (量 × 件数)</th></tr></thead>
@@ -961,28 +984,68 @@ def dashboard(
     form_injection = form_summary.get("注射", 0)
     form_other = form_summary.get("その他", 0)
 
+    # ---- 年度計算 (4月始まり) ----
+    _today = datetime.now().date()
+    _cy = _today.year if _today.month >= 4 else _today.year - 1
+    _py = _cy - 1
+    cy_start = f"{_cy}0401"
+    cy_end = f"{_cy+1}0331"
+    py_start = f"{_py}0401"
+    py_end = f"{_py+1}0331"
+    # 今年度の経過月数 (前年比の月平均計算用)
+    _cy_end_date = _today if _today.year == _cy else datetime(_cy + 1, 3, 31).date()
+    _cy_months = max(1, (_cy_end_date.year - _cy) * 12 + _cy_end_date.month - 4 + 1)
+
     # 混合処方: combo × 量 で集計 → Python で combo ごとに内訳を組立
     combos_data = conn.execute(
-        """
+        f"""
         WITH mix AS (
-          SELECT GROUP_CONCAT(d.name, ' + ') AS combo,
+          SELECT r.id AS rp_id,
+                 p.dispense_date,
+                 GROUP_CONCAT(d.name, ' + ') AS combo,
                  ROUND(SUM(COALESCE(d.quantity, 0)), 2) AS mix_qty,
                  MAX(d.unit) AS unit
           FROM rps r
           JOIN drugs d ON d.prescription_id = r.prescription_id AND d.rp_no = r.rp_no
+          JOIN prescriptions p ON p.id = r.prescription_id
           WHERE r.is_mixed = 1
-            AND r.site_text = '混合'          -- 誤検出 (旧 drug_count>=2 判定) を除外
+            AND r.site_text = '混合'
             AND d.name IS NOT NULL
             AND d.form = '外用'
           GROUP BY r.id
         )
-        SELECT combo, mix_qty, unit, COUNT(*) AS n
+        SELECT combo, mix_qty, unit, dispense_date, COUNT(*) AS n
         FROM mix
         WHERE combo IS NOT NULL
-        GROUP BY combo, mix_qty, unit
+        GROUP BY combo, mix_qty, unit, dispense_date
         ORDER BY combo, mix_qty
         """
     ).fetchall()
+
+    # ---- combo ごとの年度別 KPI 集計 ----
+    from collections import defaultdict as _dd
+    combo_summary: dict = _dd(lambda: {
+        "total_n": 0, "total_qty": 0.0, "unit": "",
+        "cy_n": 0, "cy_qty": 0.0,
+        "py_n": 0, "py_qty": 0.0,
+        "qty_hist": _dd(int),  # mix_qty (g) → 件数
+    })
+    for r in combos_data:
+        c = r["combo"]
+        n = r["n"]
+        qty = (r["mix_qty"] or 0.0) * n  # 総量 = 単発量 × 件数
+        dd_ = r["dispense_date"]
+        s = combo_summary[c]
+        s["total_n"] += n
+        s["total_qty"] += qty
+        s["unit"] = r["unit"] or s["unit"]
+        s["qty_hist"][r["mix_qty"] or 0.0] += n
+        if dd_ and cy_start <= dd_ <= cy_end:
+            s["cy_n"] += n
+            s["cy_qty"] += qty
+        elif dd_ and py_start <= dd_ <= py_end:
+            s["py_n"] += n
+            s["py_qty"] += qty
 
     # Python 側で combo ごとにグルーピング + 総件数計算
     from collections import defaultdict
@@ -996,9 +1059,12 @@ def dashboard(
 
     def _fmt_breakdown(entries):
         # 量が多い順にソート
-        entries.sort(key=lambda x: -(x[0] or 0))
-        parts = []
+        agg = defaultdict(int)  # (qty, unit) → n
         for qty, unit, n in entries:
+            agg[(qty, unit)] += n
+        rows = sorted(agg.items(), key=lambda x: -(x[0][0] or 0))
+        parts = []
+        for (qty, unit), n in rows:
             qty_str = f"{qty:g}" if qty else "0"
             parts.append(f'<span style="display:inline-block;background:#e0f2fe;border-radius:12px;padding:2px 10px;margin:2px 4px 2px 0;font-size:12px;">{qty_str}{_h(unit or "")}×{n}</span>')
         return "".join(parts)
@@ -1009,6 +1075,60 @@ def dashboard(
         f'<td>{_fmt_breakdown(combo_map[c])}</td></tr>'
         for c in sorted_combos
     ) or '<tr><td colspan="3">(データなし — 新クライアントから RP 情報 (is_mixed) が届き次第表示)</td></tr>'
+
+    # ---- 予製計画 レポート HTML: 年度対比 + 総量 + 月平均 + 予製推奨 ----
+    def _fmt_yoy(cy, py):
+        """前年比 = (cy_qty / (py_qty * (cy_months/12))) - 1 の割合表示。"""
+        if not py:
+            return '<span style="color:#94a3b8">—</span>' if not cy else '<span style="color:#dc2626">NEW</span>'
+        # 年度比較のため 前年度を今年度と同じ月数に換算
+        adj_py = py * (_cy_months / 12.0)
+        if adj_py == 0:
+            return "—"
+        pct = ((cy - adj_py) / adj_py) * 100
+        color = "#059669" if pct > 5 else ("#dc2626" if pct < -5 else "#64748b")
+        arrow = "↑" if pct > 5 else ("↓" if pct < -5 else "→")
+        return f'<span style="color:{color};font-weight:600">{arrow} {pct:+.0f}%</span>'
+
+    def _fmt_qty(qty, unit):
+        if not qty:
+            return "0"
+        if qty >= 1000:
+            return f"{qty/1000:.1f}k{unit}"
+        return f"{qty:.0f}{unit}"
+
+    planning_sorted = sorted(combo_summary.items(), key=lambda x: -x[1]["cy_qty"] if x[1]["cy_qty"] else -x[1]["total_qty"])[:50]
+
+    def _planning_row(combo, s):
+        unit = s["unit"] or "g"
+        monthly_avg_qty = s["cy_qty"] / _cy_months if _cy_months else 0
+        monthly_avg_n = s["cy_n"] / _cy_months if _cy_months else 0
+        # 予製推奨 (2週間分 = 月平均の 0.5)
+        yosei_recommend = monthly_avg_qty * 0.5
+        # MIX 量帯別 top 3
+        top_qtys = sorted(s["qty_hist"].items(), key=lambda x: -x[1])[:3]
+        qty_dist = " ".join(f'<span style="background:#dbeafe;color:#1e3a8a;padding:1px 6px;border-radius:8px;font-size:11px;">{q:g}{unit}×{n}</span>' for q, n in top_qtys if q)
+        return (
+            f'<tr>'
+            f'<td style="font-size:12px;">{_h(combo)}</td>'
+            f'<td class="num">{s["total_n"]:,}</td>'
+            f'<td class="num" style="color:#334155">{_fmt_qty(s["total_qty"], unit)}</td>'
+            f'<td class="num" style="background:#f0fdf4">{s["cy_n"]:,}<div style="font-size:10px;color:#059669">{_fmt_qty(s["cy_qty"], unit)}</div></td>'
+            f'<td class="num" style="background:#fef3c7">{s["py_n"]:,}<div style="font-size:10px;color:#78350f">{_fmt_qty(s["py_qty"], unit)}</div></td>'
+            f'<td class="num">{_fmt_yoy(s["cy_qty"], s["py_qty"])}</td>'
+            f'<td class="num" style="background:#eff6ff"><strong>{_fmt_qty(monthly_avg_qty, unit)}</strong><div style="font-size:10px;color:#3b82f6">{monthly_avg_n:.1f}件</div></td>'
+            f'<td class="num" style="background:#fef2f2"><strong style="color:#991b1b">{_fmt_qty(yosei_recommend, unit)}</strong></td>'
+            f'<td>{qty_dist}</td>'
+            f'</tr>'
+        )
+    planning_rows_html = "\n".join(_planning_row(c, s) for c, s in planning_sorted) or '<tr><td colspan="9">(データなし)</td></tr>'
+
+    planning_report_html = (
+        f'<div style="background:#f8fafc;padding:10px 14px;border-radius:6px;margin:12px 0;font-size:12px;color:#475569;">'
+        f'年度定義: 4月〜3月 &nbsp;|&nbsp; 今年度 = <strong>{_cy}年度</strong> ({cy_start[:4]}-{cy_start[4:6]}-{cy_start[6:8]} 〜 経過 <strong>{_cy_months}ヶ月</strong>) &nbsp;|&nbsp; 前年度 = <strong>{_py}年度</strong> ({py_start[:4]}-{py_start[4:6]}-{py_start[6:8]} 〜 {py_end[:4]}-{py_end[4:6]}-{py_end[6:8]})<br>'
+        f'前年比 = 前年度を今年度の経過月数に按分して比較 (公平な進捗比較) &nbsp;|&nbsp; 予製推奨量 = 月平均量 × 0.5 (2週間分)'
+        f'</div>'
+    )
 
     mix_total = conn.execute(
         "SELECT COUNT(DISTINCT prescription_id) FROM fees WHERE is_mix_flag = 1"
@@ -1157,6 +1277,8 @@ def dashboard(
         mix_last_week=mix_last_week,
         weekly_chart=weekly_chart_svg,
         mix_combos=mix_combos_html,
+        planning_report=planning_report_html,
+        planning_rows=planning_rows_html,
         form_internal=form_internal,
         form_external=form_external,
         form_injection=form_injection,
