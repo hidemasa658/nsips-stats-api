@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS fees (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fees_mix ON fees(is_mix_flag);
+CREATE INDEX IF NOT EXISTS idx_drugs_yj_cover ON drugs(yj_code, total_quantity);
 """
 
 
@@ -50,6 +51,8 @@ def connect(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA cache_size = -200000")  # 200MB キャッシュ (集計高速化)
+    conn.execute("PRAGMA temp_store = MEMORY")
     conn.row_factory = sqlite3.Row
     return conn
 

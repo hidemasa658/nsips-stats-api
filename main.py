@@ -688,22 +688,32 @@ def dashboard(
         period = "all"
 
     prescription_count = conn.execute(f"SELECT COUNT(*) FROM prescriptions WHERE {period_where}").fetchone()[0]
-    drug_kinds = conn.execute(
-        f"SELECT COUNT(DISTINCT d.yj_code) FROM drugs d JOIN prescriptions p ON d.prescription_id = p.id WHERE d.yj_code IS NOT NULL AND {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}"
-    ).fetchone()[0]
+    # period=all の時は prescriptions JOIN 不要 (drugs 単独で高速集計)
+    is_all_period = (period_where.strip() == "1=1")
 
-    # 高速化: 一次集計は drugs のみ (JOIN 無し) → その後 TOP50 の詳細を fetch
-    drug_agg = conn.execute(
-        f"""SELECT d.yj_code,
-                  COUNT(*) AS n,
-                  SUM(d.total_quantity) AS qty,
-                  SUM(CASE WHEN d.total_quantity IS NOT NULL THEN 1 ELSE 0 END) AS valid_n
-           FROM drugs d
-           JOIN prescriptions p ON d.prescription_id = p.id
-           WHERE d.yj_code IS NOT NULL AND {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}
-           GROUP BY d.yj_code
-           ORDER BY n DESC, qty DESC LIMIT 50"""
-    ).fetchall()
+    if is_all_period:
+        drug_kinds = conn.execute(
+            "SELECT COUNT(DISTINCT yj_code) FROM drugs WHERE yj_code IS NOT NULL"
+        ).fetchone()[0]
+        drug_agg = conn.execute(
+            """SELECT yj_code, COUNT(*) AS n, SUM(total_quantity) AS qty,
+                       SUM(CASE WHEN total_quantity IS NOT NULL THEN 1 ELSE 0 END) AS valid_n
+                FROM drugs
+                WHERE yj_code IS NOT NULL
+                GROUP BY yj_code ORDER BY n DESC, qty DESC LIMIT 50"""
+        ).fetchall()
+    else:
+        drug_kinds = conn.execute(
+            f"SELECT COUNT(DISTINCT d.yj_code) FROM drugs d JOIN prescriptions p ON d.prescription_id = p.id WHERE d.yj_code IS NOT NULL AND {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}"
+        ).fetchone()[0]
+        drug_agg = conn.execute(
+            f"""SELECT d.yj_code, COUNT(*) AS n, SUM(d.total_quantity) AS qty,
+                       SUM(CASE WHEN d.total_quantity IS NOT NULL THEN 1 ELSE 0 END) AS valid_n
+                FROM drugs d
+                JOIN prescriptions p ON d.prescription_id = p.id
+                WHERE d.yj_code IS NOT NULL AND {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}
+                GROUP BY d.yj_code ORDER BY n DESC, qty DESC LIMIT 50"""
+        ).fetchall()
     # TOP50 の YJ コードだけ詳細情報を IN で引き当て
     top_yjs = [r["yj_code"] for r in drug_agg if r["yj_code"]]
     detail_map: dict[str, dict] = {}
