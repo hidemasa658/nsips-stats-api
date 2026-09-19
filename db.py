@@ -41,7 +41,6 @@ CREATE TABLE IF NOT EXISTS fees (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fees_mix ON fees(is_mix_flag);
-CREATE INDEX IF NOT EXISTS idx_drugs_yj_cover ON drugs(yj_code, total_quantity);
 """
 
 
@@ -103,6 +102,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE drugs ADD COLUMN unit_price REAL")
     if "total_quantity" not in drugs_cols:
         conn.execute("ALTER TABLE drugs ADD COLUMN total_quantity REAL")
+    # カバリング index (total_quantity 追加後に作成する必要あり)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_drugs_yj_cover ON drugs(yj_code, total_quantity)")
     # rps テーブル (RP = 用法単位のグルーピング、混合検出用)
     conn.executescript(
         """
