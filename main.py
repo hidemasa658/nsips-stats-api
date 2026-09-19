@@ -313,28 +313,45 @@ tr:hover {{ background: #f9f9f9; }}
 <h1>💊 nsips-stats ダッシュボード <span style="font-size:14px;color:#64748b;font-weight:normal;">— {period_label}</span></h1>
 
 <style>
-.tabs {{ display: flex; gap: 4px; margin: 16px 0; flex-wrap: wrap; }}
-.tab {{ padding: 8px 16px; background: #f1f5f9; color: #475569; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; transition: all 0.15s; }}
+.tabs {{ display: flex; gap: 4px; margin: 12px 0; flex-wrap: wrap; align-items: center; }}
+.tab {{ padding: 6px 12px; background: #f1f5f9; color: #475569; border-radius: 5px; text-decoration: none; font-size: 12px; font-weight: 500; transition: all 0.15s; }}
 .tab:hover {{ background: #e2e8f0; color: #0f172a; }}
 .tab.active {{ background: #3b82f6; color: white; }}
+.tabs .sep {{ width: 1px; height: 20px; background: #cbd5e1; margin: 0 4px; }}
+.tabs input[type="date"], .tabs input[type="month"] {{
+  padding: 5px 8px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 5px;
+  background: #fff; color: #0f172a; font-family: inherit;
+}}
+.tabs form {{ display: inline-flex; gap: 4px; align-items: center; margin: 0; }}
+.tabs button {{ padding: 5px 10px; background: #f1f5f9; color: #475569; border: none; border-radius: 5px; font-size: 12px; cursor: pointer; }}
+.tabs button:hover {{ background: #e2e8f0; color: #0f172a; }}
 </style>
 <div class="tabs">
   <a class="tab {tab_today}" href="?token={token_qs}&period=today">今日</a>
   <a class="tab {tab_yesterday}" href="?token={token_qs}&period=yesterday">昨日</a>
   <a class="tab {tab_month}" href="?token={token_qs}&period=month">今月</a>
   <a class="tab {tab_all}" href="?token={token_qs}&period=all">全期間</a>
+  <span class="sep"></span>
+  <form method="get">
+    <input type="hidden" name="token" value="{token_qs}">
+    <input type="date" name="period" value="{picker_date}" onchange="this.form.submit()">
+  </form>
+  <form method="get">
+    <input type="hidden" name="token" value="{token_qs}">
+    <input type="month" name="period" value="{picker_month}" onchange="this.form.submit()">
+  </form>
 </div>
 
 <style>
-.kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 16px 0; }}
-.kpi {{ background: #f8fafc; border-left: 3px solid #3b82f6; padding: 10px 14px; border-radius: 6px; }}
+.kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 6px; margin: 10px 0; }}
+.kpi {{ background: #f8fafc; border-left: 3px solid #3b82f6; padding: 6px 10px; border-radius: 4px; }}
 .kpi.accent-orange {{ border-left-color: #f59e0b; background: #fffbeb; }}
 .kpi.accent-green {{ border-left-color: #10b981; background: #ecfdf5; }}
 .kpi.accent-purple {{ border-left-color: #8b5cf6; background: #f5f3ff; }}
 .kpi.accent-blue {{ border-left-color: #3b82f6; background: #eff6ff; }}
-.kpi .val {{ font-size: 22px; font-weight: bold; color: #0f172a; font-variant-numeric: tabular-nums; }}
-.kpi .lbl {{ font-size: 11px; color: #475569; margin-top: 2px; }}
-.kpi-section-title {{ font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 20px 0 4px; padding-left: 4px; }}
+.kpi .val {{ font-size: 17px; font-weight: bold; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1.2; }}
+.kpi .lbl {{ font-size: 10px; color: #64748b; margin-top: 1px; }}
+.kpi-section-title {{ font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 14px 0 2px; padding-left: 4px; }}
 
 /* 調剤報酬明細書スタイル */
 .receipt {{ max-width: 640px; margin: 12px 0; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }}
@@ -525,6 +542,9 @@ def dashboard(
     yesterday_str = (now - timedelta(days=1)).strftime("%Y%m%d")
     this_month = now.strftime("%Y%m")
 
+    # picker で選ばれた ISO 形式 (YYYY-MM-DD / YYYY-MM) も受け付ける
+    picker_date_val = None  # 明示的な日付選択
+    picker_month_val = None  # 明示的な月選択
     if period == "today":
         period_where = f"COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)) = '{today_str}'"
         period_label = f"今日 ({now:%Y-%m-%d})"
@@ -534,6 +554,22 @@ def dashboard(
     elif period == "month":
         period_where = f"SUBSTR(COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)), 1, 6) = '{this_month}'"
         period_label = f"今月 ({now:%Y-%m})"
+    elif period and len(period) == 10 and period[4] == "-" and period[7] == "-":
+        # YYYY-MM-DD (input type=date)
+        ymd = period.replace("-", "")
+        period_where = f"COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)) = '{ymd}'"
+        period_label = f"{period}"
+        picker_date_val = period
+    elif period and len(period) == 7 and period[4] == "-":
+        # YYYY-MM (input type=month)
+        ym = period.replace("-", "")
+        period_where = f"SUBSTR(COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)), 1, 6) = '{ym}'"
+        period_label = f"{period}"
+        picker_month_val = period
+    elif period and len(period) == 8 and period.isdigit():
+        # YYYYMMDD (旧形式互換)
+        period_where = f"COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)) = '{period}'"
+        period_label = f"{period[:4]}-{period[4:6]}-{period[6:8]}"
     elif period and len(period) == 6 and period.isdigit():
         period_where = f"SUBSTR(COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)), 1, 6) = '{period}'"
         period_label = f"{period[:4]}-{period[4:6]}"
@@ -980,6 +1016,8 @@ def dashboard(
         tab_yesterday="active" if period == "yesterday" else "",
         tab_month="active" if period == "month" else "",
         tab_all="active" if period == "all" else "",
+        picker_date=(picker_date_val or now.strftime("%Y-%m-%d")),
+        picker_month=(picker_month_val or now.strftime("%Y-%m")),
         dp_total_dispensing=dp_total_dispensing,
         dp_total_drug_fee=dp_total_drug_fee,
         dp_count=dp_count,
