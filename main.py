@@ -536,6 +536,18 @@ def dashboard(
     if not API_TOKEN or provided != API_TOKEN:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
 
+    # ---- HTML キャッシュ (期間別、60 秒 TTL) ----
+    import time as _time_mod
+    global _DASHBOARD_CACHE
+    try:
+        _DASHBOARD_CACHE
+    except NameError:
+        _DASHBOARD_CACHE = {}
+    cache_key = period or "all"
+    cached = _DASHBOARD_CACHE.get(cache_key)
+    if cached and (_time_mod.time() - cached[0]) < 60:
+        return HTMLResponse(content=cached[1])
+
     conn = get_conn()
 
     # ---- 期間フィルタ ----
@@ -1077,4 +1089,5 @@ def dashboard(
         recent_rows=recent_rows_html,
         now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
+    _DASHBOARD_CACHE[cache_key] = (_time_mod.time(), html)
     return HTMLResponse(content=html)
