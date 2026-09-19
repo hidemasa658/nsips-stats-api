@@ -374,6 +374,20 @@ tr:hover {{ background: #f9f9f9; }}
 .receipt .copay {{ background: #fef3c7; font-weight: bold; }}
 .receipt .copay td {{ padding: 8px 12px; color: #78350f; }}
 .receipt .copay .num {{ font-size: 16px; color: #78350f; }}
+
+/* 混合処方 週次トレンド */
+.mix-summary {{ display: flex; gap: 12px; margin: 12px 0; flex-wrap: wrap; }}
+.mix-kpi {{ background: #fef3c7; border-left: 4px solid #d97706; padding: 8px 14px; border-radius: 6px; }}
+.mix-kpi .v {{ font-size: 22px; font-weight: bold; color: #78350f; font-variant-numeric: tabular-nums; }}
+.mix-kpi .l {{ font-size: 11px; color: #92400e; }}
+.chart-wrap {{ background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; overflow-x: auto; }}
+.chart-wrap svg {{ display: block; }}
+.chart-wrap svg .bar {{ fill: #f59e0b; }}
+.chart-wrap svg .bar:hover {{ fill: #d97706; }}
+.chart-wrap svg .axis {{ stroke: #94a3b8; stroke-width: 1; }}
+.chart-wrap svg .lbl {{ font-size: 9px; fill: #64748b; text-anchor: middle; }}
+.chart-wrap svg .val {{ font-size: 10px; fill: #0f172a; text-anchor: middle; font-weight: 600; }}
+.chart-wrap svg .grid {{ stroke: #e5e7eb; stroke-width: 1; stroke-dasharray: 3,3; }}
 </style>
 
 <div class="kpi-section-title">{main_label} / {cmp_label} (調剤日ベース)</div>
@@ -481,7 +495,18 @@ tr:hover {{ background: #f9f9f9; }}
 </table>
 
 <h2>混合処方 (外用剤の計量混合) 集計</h2>
-<p style="color:#64748b;font-size:13px;">record 3 field 5 が「混合」の RP + 外用剤 (M/N/Q/X/U/P) の組合せのみ集計。MIX 量 = 同 RP 内の外用剤 総処方量の合計。「30g × 5件」= 合計 30g の混合が 5 回。</p>
+
+<div class="mix-summary">
+  <div class="mix-kpi"><div class="v">{mix_total_all:,}</div><div class="l">全期間 総件数</div></div>
+  <div class="mix-kpi"><div class="v">{mix_weekly_avg:.1f}</div><div class="l">週平均 (直近12週)</div></div>
+  <div class="mix-kpi"><div class="v">{mix_last_week:,}</div><div class="l">先週の件数</div></div>
+</div>
+
+<h3 style="font-size:14px;margin:20px 0 8px;color:#475569;">週次トレンド (直近 26 週)</h3>
+<div class="chart-wrap">{weekly_chart}</div>
+
+<h3 style="font-size:14px;margin:20px 0 8px;color:#475569;">混合組合せ 累計 (上位 30)</h3>
+<p style="color:#64748b;font-size:12px;">record 3 field 5 が「混合」の RP + 外用剤 (M/N/Q/X/U/P) の組合せのみ集計。MIX 量 = 同 RP 内の外用剤 総処方量の合計。「30g × 5件」= 合計 30g の混合が 5 回。</p>
 <table>
 <thead><tr><th class="num">総件数</th><th>混合された薬剤の組合せ</th><th>MIX 量別 内訳 (量 × 件数)</th></tr></thead>
 <tbody>
@@ -981,6 +1006,80 @@ def dashboard(
     mix_total = conn.execute(
         "SELECT COUNT(DISTINCT prescription_id) FROM fees WHERE is_mix_flag = 1"
     ).fetchone()[0]
+
+    # 全期間の 計量混合 総件数 (期間フィルタなし = 全期間)
+    mix_total_all = conn.execute(
+        "SELECT COUNT(DISTINCT prescription_id) FROM fees WHERE is_mix_flag = 1"
+    ).fetchone()[0]
+
+    # 週次集計: dispense_date (YYYYMMDD) を ISO 週 (YYYY-Wnn) に変換
+    # SQLite の STRFTIME は 'YYYY-MM-DD' 形式が必要なので変換
+    mix_weekly = conn.execute(
+        """SELECT STRFTIME('%Y-%W',
+                  SUBSTR(COALESCE(p.dispense_date, STRFTIME('%Y%m%d', p.detected_at)), 1, 4) || '-' ||
+                  SUBSTR(COALESCE(p.dispense_date, STRFTIME('%Y%m%d', p.detected_at)), 5, 2) || '-' ||
+                  SUBSTR(COALESCE(p.dispense_date, STRFTIME('%Y%m%d', p.detected_at)), 7, 2)) AS wk,
+                  COUNT(DISTINCT p.id) AS n
+           FROM prescriptions p
+           JOIN fees f ON f.prescription_id = p.id
+           WHERE f.is_mix_flag = 1
+             AND p.dispense_date IS NOT NULL
+           GROUP BY wk
+           ORDER BY wk DESC
+           LIMIT 26"""
+    ).fetchall()
+    # 昇順に戻す
+    mix_weekly = list(reversed(mix_weekly))
+
+    # 直近12週で 平均 + 先週件数
+    recent12 = mix_weekly[-12:] if len(mix_weekly) >= 12 else mix_weekly
+    mix_weekly_avg = sum(r["n"] for r in recent12) / len(recent12) if recent12 else 0.0
+    mix_last_week = mix_weekly[-1]["n"] if mix_weekly else 0
+
+    # SVG バー チャート生成
+    def _weekly_chart_svg(weeks):
+        if not weeks:
+            return '<div style="color:#94a3b8;font-size:13px;padding:20px;">データなし</div>'
+        max_n = max(r["n"] for r in weeks) or 1
+        bar_w = 24
+        bar_gap = 6
+        left_pad = 40
+        top_pad = 20
+        chart_h = 180
+        bottom_pad = 40
+        width = left_pad + len(weeks) * (bar_w + bar_gap) + 10
+        height = top_pad + chart_h + bottom_pad
+        parts = [f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg">']
+        # グリッド線 (4分割)
+        for i in range(5):
+            y = top_pad + chart_h - (chart_h * i / 4)
+            val = int(max_n * i / 4)
+            parts.append(f'<line class="grid" x1="{left_pad}" y1="{y:.1f}" x2="{width-10}" y2="{y:.1f}"/>')
+            parts.append(f'<text x="{left_pad-4}" y="{y+3:.1f}" style="font-size:9px;fill:#64748b;text-anchor:end;">{val}</text>')
+        # 各バー
+        for i, r in enumerate(weeks):
+            x = left_pad + i * (bar_w + bar_gap)
+            h = (r["n"] / max_n) * chart_h if max_n > 0 else 0
+            y = top_pad + chart_h - h
+            wk = r["wk"] or ""
+            n = r["n"]
+            parts.append(f'<rect class="bar" x="{x}" y="{y:.1f}" width="{bar_w}" height="{h:.1f}"><title>{wk}: {n}件</title></rect>')
+            # ラベル (週番号のみ)
+            if wk and "-" in wk:
+                yr, w = wk.split("-", 1)
+                lbl = f"{yr[2:]}W{w}"
+            else:
+                lbl = wk
+            parts.append(f'<text class="lbl" x="{x + bar_w/2:.1f}" y="{top_pad + chart_h + 12}" transform="rotate(-45 {x + bar_w/2:.1f} {top_pad + chart_h + 12})">{lbl}</text>')
+            # 値ラベル (件数 5 以上のときのみ表示、上に)
+            if n >= 5:
+                parts.append(f'<text class="val" x="{x + bar_w/2:.1f}" y="{y-3:.1f}">{n}</text>')
+        # X 軸
+        parts.append(f'<line class="axis" x1="{left_pad}" y1="{top_pad + chart_h}" x2="{width-10}" y2="{top_pad + chart_h}"/>')
+        parts.append('</svg>')
+        return "".join(parts)
+
+    weekly_chart_svg = _weekly_chart_svg(mix_weekly)
     mix_data = conn.execute(
         """SELECT drug_count, COUNT(*) AS n FROM (
              SELECT prescription_id, COUNT(*) AS drug_count FROM drugs
@@ -1041,6 +1140,10 @@ def dashboard(
         drug_rows=drug_rows_html,
         fee_rows=fee_rows_html,
         mix_total=mix_total,
+        mix_total_all=mix_total_all,
+        mix_weekly_avg=mix_weekly_avg,
+        mix_last_week=mix_last_week,
+        weekly_chart=weekly_chart_svg,
         mix_combos=mix_combos_html,
         form_internal=form_internal,
         form_external=form_external,
