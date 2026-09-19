@@ -408,7 +408,68 @@ tr:hover {{ background: #f9f9f9; }}
 .heatmap-wrap .hm-3 {{ background: #fbbf24; color: #78350f; }}
 .heatmap-wrap .hm-4 {{ background: #f59e0b; color: #fff; font-weight: 600; }}
 .heatmap-wrap .hm-5 {{ background: #d97706; color: #fff; font-weight: 700; }}
+.heatmap-wrap .hm-clickable {{ cursor: pointer; }}
+.heatmap-wrap .hm-clickable:hover {{ outline: 2px solid #1e40af; outline-offset: -2px; z-index: 2; position: relative; }}
+
+/* MIX 内訳モーダル */
+#mix-detail-modal {{
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.5); z-index: 1000; align-items: center; justify-content: center;
+}}
+#mix-detail-modal.open {{ display: flex; }}
+#mix-detail-modal .mix-detail-card {{
+  background: #fff; border-radius: 8px; padding: 20px 24px; max-width: 640px; width: 90%;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2); max-height: 80vh; overflow-y: auto;
+}}
+#mix-detail-modal .mix-detail-title {{
+  font-weight: 600; color: #0f172a; font-size: 14px; padding-bottom: 12px;
+  border-bottom: 2px solid #e5e7eb; margin-bottom: 12px;
+}}
+#mix-detail-modal .mix-detail-body {{
+  display: flex; flex-wrap: wrap; gap: 8px;
+}}
+#mix-detail-modal .mix-detail-body .badge {{
+  background: #fef3c7; color: #78350f; padding: 6px 12px; border-radius: 12px;
+  font-size: 13px; font-weight: 500;
+}}
+#mix-detail-modal .mix-detail-close {{
+  margin-top: 16px; padding: 8px 16px; background: #3b82f6; color: #fff;
+  border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+}}
 </style>
+<script>
+function showMixDetail(el) {{
+  var title = el.getAttribute('data-title') || '';
+  var breakdown = el.getAttribute('data-breakdown') || '';
+  var modal = document.getElementById('mix-detail-modal');
+  document.getElementById('mix-detail-title').textContent = title;
+  var body = document.getElementById('mix-detail-body');
+  body.innerHTML = '';
+  if (!breakdown || breakdown === '(データなし)') {{
+    body.innerHTML = '<span style="color:#94a3b8;font-size:13px;">(データなし)</span>';
+  }} else {{
+    breakdown.split(/\\s+/).forEach(function(part) {{
+      if (!part) return;
+      var span = document.createElement('span');
+      span.className = 'badge';
+      span.textContent = part;
+      body.appendChild(span);
+    }});
+  }}
+  modal.classList.add('open');
+}}
+function closeMixDetail() {{
+  document.getElementById('mix-detail-modal').classList.remove('open');
+}}
+document.addEventListener('DOMContentLoaded', function() {{
+  document.getElementById('mix-detail-modal').addEventListener('click', function(e) {{
+    if (e.target === this) closeMixDetail();
+  }});
+  document.addEventListener('keydown', function(e) {{
+    if (e.key === 'Escape') closeMixDetail();
+  }});
+}});
+</script>
 
 <div class="kpi-section-title">{main_label} / {cmp_label} (調剤日ベース)</div>
 <div class="kpi-grid">
@@ -628,6 +689,14 @@ tr:hover {{ background: #f9f9f9; }}
 </details>
 
 <div class="updated">最終更新: {now} (10分ごとに自動再読込)</div>
+
+<div id="mix-detail-modal">
+  <div class="mix-detail-card">
+    <div class="mix-detail-title" id="mix-detail-title"></div>
+    <div class="mix-detail-body" id="mix-detail-body"></div>
+    <button class="mix-detail-close" onclick="closeMixDetail()">閉じる</button>
+  </div>
+</div>
 </body>
 </html>
 """
@@ -1099,6 +1168,7 @@ def dashboard(
         "qty_hist_prev_month": _dd(int),  # mix_qty (g) → 件数 (前年同月のみ)
         "monthly": _dd(lambda: {"n": 0, "qty": 0.0}),  # "YYYY-MM" → {n, qty}
         "weekly": _dd(lambda: {"n": 0, "qty": 0.0}),   # "YYYY-Wnn" → {n, qty}
+        "monthly_qty_hist": _dd(lambda: _dd(int)),  # "YYYY-MM" → {mix_qty: 件数}
     })
     for r in combos_data:
         c = r["combo"]
@@ -1125,6 +1195,7 @@ def dashboard(
                 ym = f"{y}-{m:02d}"
                 s["monthly"][ym]["n"] += n
                 s["monthly"][ym]["qty"] += qty
+                s["monthly_qty_hist"][ym][r["mix_qty"] or 0.0] += n
                 iso = _date(y, m, d).isocalendar()
                 wk = f"{iso[0]}-{iso[1]:02d}"
                 s["weekly"][wk]["n"] += n
@@ -1305,7 +1376,7 @@ def dashboard(
     # Top 30 combos by 累計件数
     heatmap_combos = sorted(combo_summary.items(), key=lambda x: -x[1]["total_n"])[:30]
 
-    def _heat_cell(val, max_val, unit):
+    def _heat_cell(val, max_val, unit, combo, ym, qty_hist, n_count):
         if not val:
             return '<td class="hm-cell hm-0"></td>'
         intensity = min(1.0, val / max(max_val, 1))
@@ -1314,20 +1385,37 @@ def dashboard(
         elif intensity >= 0.4: cls = "hm-3"
         elif intensity >= 0.2: cls = "hm-2"
         else: cls = "hm-1"
-        # 量を短く表示 (1000以上は kg 単位)
         if val >= 1000:
             display = f"{val/1000:.1f}k"
         else:
             display = f"{val:.0f}"
-        return f'<td class="hm-cell {cls}" title="{val:.1f}{unit}">{display}</td>'
+        # 量パターン内訳を data 属性に (クリックで popover 表示)
+        top_patterns = sorted(qty_hist.items(), key=lambda x: -x[1])
+        breakdown_parts = [f"{q:g}{unit}×{c}" for q, c in top_patterns if q]
+        breakdown_str = "  ".join(breakdown_parts) if breakdown_parts else "(データなし)"
+        # クリック時 タイトル行に表示するデータ
+        title_line = f"{combo} ／ {ym} ／ 総量 {val:.1f}{unit} ／ {n_count}件"
+        # HTML escape
+        combo_esc = html_lib.escape(combo)
+        ym_esc = html_lib.escape(ym)
+        bd_esc = html_lib.escape(breakdown_str)
+        title_esc = html_lib.escape(title_line)
+        return (
+            f'<td class="hm-cell hm-clickable {cls}" '
+            f'data-title="{title_esc}" '
+            f'data-breakdown="{bd_esc}" '
+            f'onclick="showMixDetail(this)">{display}</td>'
+        )
 
     def _heat_row(combo, s):
         unit = s["unit"] or "g"
         cells = []
         for ym in sorted_months:
-            v = monthly_combo_map[combo].get(ym, {}).get("qty", 0.0)
-            # スケール: このコンボの月平均量の3倍
-            cells.append(_heat_cell(v, s["total_qty"] / max(1, len(sorted_months)) * 3, unit))
+            entry = monthly_combo_map[combo].get(ym, {"n": 0, "qty": 0.0})
+            v = entry.get("qty", 0.0)
+            n_count = entry.get("n", 0)
+            qty_hist = s["monthly_qty_hist"].get(ym, {})
+            cells.append(_heat_cell(v, s["total_qty"] / max(1, len(sorted_months)) * 3, unit, combo, ym, qty_hist, n_count))
         combo_short = combo if len(combo) < 40 else combo[:38] + "…"
         total_disp = f"{s['total_qty']/1000:.1f}k{unit}" if s["total_qty"] >= 1000 else f"{s['total_qty']:.0f}{unit}"
         return f'<tr><td class="hm-label">{_h(combo_short)}</td>{"".join(cells)}<td class="num" style="background:#f8fafc;font-weight:600">{total_disp}</td></tr>'
