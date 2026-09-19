@@ -102,6 +102,8 @@ def reparse_all(db_path: Path) -> tuple[int, int]:
                  pharmacy_mgmt_other = ?,
                  patient_copay = ?,
                  patient_copay_total = ?,
+                 senteryoyo_fee_excl_tax = ?,
+                 senteryoyo_tax = ?,
                  dispense_date = COALESCE(?, dispense_date),
                  dispensed_at = COALESCE(?, dispensed_at)
                WHERE id = ?""",
@@ -110,6 +112,7 @@ def reparse_all(db_path: Path) -> tuple[int, int]:
              t.get("dispensing_base_fee"), t.get("dispensing_add_fee"),
              t.get("drug_guidance_fee"), t.get("pharmacy_mgmt_other"),
              t.get("patient_copay"), t.get("patient_copay_total"),
+             t.get("senteryoyo_fee_excl_tax"), t.get("senteryoyo_tax"),
              parsed.get("dispense_date"), parsed.get("dispensed_at"),
              pid),
         )

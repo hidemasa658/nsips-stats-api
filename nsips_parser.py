@@ -157,7 +157,9 @@ def parse_nsips(body: str) -> dict:
             # [11] 薬学管理料の残り (調剤管理料+特薬管等)
             # [13] 患者負担金 (円、割合適用済、保険内のみ)
             # [17][18][19] 総患者負担額 (保険内 + 選定療養費) — 通常同じ値
-            #   選定療養費 = [17] - [13] (長期収載品を選択した場合の追加負担)
+            # [21] 選定療養費 (税抜、円)  [22] 選定療養費 消費税 10% (円)
+            #   検算: [17] = [13] + [21] + [22]
+            #   [4][6][10][14][15][16][20] は予約フィールド (常に 0)
             result["totals"] = {
                 "drug_fee": _to_int(_col(fields, 1)),
                 "dispensing_fee_total": _to_int(_col(fields, 2)),
@@ -169,6 +171,8 @@ def parse_nsips(body: str) -> dict:
                 "pharmacy_mgmt_other": _to_int(_col(fields, 11)),
                 "patient_copay": _to_int(_col(fields, 13)),
                 "patient_copay_total": _to_int(_col(fields, 17)),
+                "senteryoyo_fee_excl_tax": _to_int(_col(fields, 21)),
+                "senteryoyo_tax": _to_int(_col(fields, 22)),
             }
 
         elif rec == "2":

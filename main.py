@@ -74,8 +74,9 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
            prescription_date_enc, doctor_name_enc,
            total_points, drug_fee, dispensing_fee_total, pharmacy_mgmt_fee_total,
            dispensing_base_fee, dispensing_add_fee, drug_guidance_fee,
-           pharmacy_mgmt_other, patient_copay, patient_copay_total)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           pharmacy_mgmt_other, patient_copay, patient_copay_total,
+           senteryoyo_fee_excl_tax, senteryoyo_tax)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payload.source_id,
@@ -97,6 +98,8 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
             t.pharmacy_mgmt_other if t else None,
             t.patient_copay if t else None,
             t.patient_copay_total if t else None,
+            t.senteryoyo_fee_excl_tax if t else None,
+            t.senteryoyo_tax if t else None,
         ),
     )
     presc_id = cur.lastrowid
@@ -834,7 +837,9 @@ def dashboard(
              COALESCE(SUM(CASE WHEN COALESCE(patient_copay_total, 0) > COALESCE(patient_copay, 0)
                                THEN patient_copay_total - patient_copay ELSE 0 END), 0) AS senteryoyo_total,
              COALESCE(SUM(CASE WHEN COALESCE(patient_copay_total, 0) > COALESCE(patient_copay, 0)
-                               THEN 1 ELSE 0 END), 0) AS senteryoyo_count
+                               THEN 1 ELSE 0 END), 0) AS senteryoyo_count,
+             COALESCE(SUM(senteryoyo_fee_excl_tax), 0) AS senteryoyo_excl_tax,
+             COALESCE(SUM(senteryoyo_tax), 0) AS senteryoyo_tax
            FROM prescriptions
            WHERE {period_where}"""
     ).fetchone()
@@ -1036,7 +1041,7 @@ def dashboard(
         t_tech_subtotal=(t_agg["dispensing_base"] + t_agg["dispensing_fee_total"] + t_agg["dispensing_add"]),
         t_patient_copay_total=t_agg["patient_copay_total"],
         senteryoyo_row=(
-            f'<tr class="copay" style="background:#fee2e2;color:#991b1b"><td>うち選定療養費 (長期収載品) <span class="item-code" style="color:#991b1b">{t_agg["senteryoyo_count"]}件</span></td><td class="num">+{t_agg["senteryoyo_total"]:,} 円</td></tr>'
+            f'<tr class="copay" style="background:#fee2e2;color:#991b1b"><td>うち選定療養費 (長期収載品) <span class="item-code" style="color:#991b1b">{t_agg["senteryoyo_count"]}件</span> <span class="item-code" style="color:#991b1b">税抜{t_agg["senteryoyo_excl_tax"]:,}+税{t_agg["senteryoyo_tax"]:,}</span></td><td class="num">+{t_agg["senteryoyo_total"]:,} 円</td></tr>'
             if t_agg["senteryoyo_total"] > 0 else ""
         ),
         recent_rows=recent_rows_html,

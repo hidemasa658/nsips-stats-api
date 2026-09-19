@@ -76,7 +76,8 @@ def init_db(conn: sqlite3.Connection) -> None:
                 "management_fee", "long_prescription_fee", "patient_copay",
                 "drug_fee", "dispensing_fee_total", "pharmacy_mgmt_fee_total",
                 "dispensing_add_fee", "drug_guidance_fee", "pharmacy_mgmt_other",
-                "patient_copay_total"):
+                "patient_copay_total",
+                "senteryoyo_fee_excl_tax", "senteryoyo_tax"):
         if col not in presc_cols:
             conn.execute(f"ALTER TABLE prescriptions ADD COLUMN {col} INTEGER")
     # drug_pricings に internal_dispensing_fee (record 6 末尾)

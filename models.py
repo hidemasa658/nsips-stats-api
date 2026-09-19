@@ -57,6 +57,8 @@ class TotalsIn(BaseModel):
     pharmacy_mgmt_other: int | None = None     # [11] 薬学管理料 (服管以外)
     patient_copay: int | None = None           # [13] 患者負担金 (保険内のみ)
     patient_copay_total: int | None = None     # [17] 総患者負担額 (保険内+選定療養)
+    senteryoyo_fee_excl_tax: int | None = None # [21] 選定療養費 (税抜、円)
+    senteryoyo_tax: int | None = None          # [22] 選定療養費 消費税 (10%、円)
     # 旧名 (互換): night_holiday_fee, management_fee, long_prescription_fee
     night_holiday_fee: int | None = None       # 廃止 (旧 [8] 誤名)
     management_fee: int | None = None          # 廃止 (旧 [9] 誤名)
