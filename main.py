@@ -454,7 +454,7 @@ tr:hover {{ background: #f9f9f9; }}
 .generic {{ color: #64748b; font-size: 11px; }}
 </style>
 <table>
-<thead><tr><th>剤形</th><th>YJコード</th><th>薬品名 / 一般名</th><th class="num">回数</th><th class="num">総数量</th><th>単位</th><th class="num">薬価</th></tr></thead>
+<thead><tr><th>YJコード</th><th>薬品名 / 一般名</th><th class="num">回数</th><th class="num">総数量</th><th>単位</th><th class="num">薬価</th></tr></thead>
 <tbody>
 {drug_rows}
 </tbody>
@@ -668,15 +668,14 @@ def dashboard(
         else:
             qty_display = '<span class="generic">旧データ (要 .txt 再来)</span>'
         return (
-            f'<tr><td>{_form_badge_detailed(r["yj_code"], r["drug_name"], r["client_form"])}</td>'
-            f'<td>{_h(r["yj_code"])}</td>'
+            f'<tr><td>{_h(r["yj_code"])}</td>'
             f'<td>{_h(r["drug_name"])}{generic}</td>'
             f'<td class="num">{r["n"]}</td>'
             f'<td class="num">{qty_display}</td>'
             f'<td>{_h(r["drug_unit"])}</td>'
             f'<td class="num">{price}</td></tr>'
         )
-    drug_rows_html = "\n".join(_drug_row(r) for r in drug_data) or '<tr><td colspan="7">(データなし)</td></tr>'
+    drug_rows_html = "\n".join(_drug_row(r) for r in drug_data) or '<tr><td colspan="6">(データなし)</td></tr>'
 
     # 成分別 累計 (YJ 1-7 桁)
     ingredient_data = conn.execute(
