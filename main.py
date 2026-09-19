@@ -168,6 +168,12 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
         )
 
     conn.commit()
+    # 新規データが入ったら dashboard キャッシュを破棄
+    global _DASHBOARD_CACHE
+    try:
+        _DASHBOARD_CACHE.clear()
+    except (NameError, AttributeError):
+        pass
     return IngestResponse(status="ok", prescription_id=presc_id)
 
 
@@ -561,19 +567,20 @@ def dashboard(
     if not API_TOKEN or provided != API_TOKEN:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
 
-    # ---- HTML キャッシュ (期間別、60 秒 TTL) ----
+    conn = get_conn()
+
+    # ---- HTML キャッシュ (期間別、60 秒 TTL、行数変化で invalidate) ----
     import time as _time_mod
     global _DASHBOARD_CACHE
     try:
         _DASHBOARD_CACHE
     except NameError:
         _DASHBOARD_CACHE = {}
-    cache_key = period or "all"
+    row_count = conn.execute("SELECT COUNT(*) FROM prescriptions").fetchone()[0]
+    cache_key = (period or "all", row_count)
     cached = _DASHBOARD_CACHE.get(cache_key)
     if cached and (_time_mod.time() - cached[0]) < 60:
         return HTMLResponse(content=cached[1])
-
-    conn = get_conn()
 
     # ---- 期間フィルタ ----
     from datetime import datetime, timedelta
