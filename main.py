@@ -619,15 +619,18 @@ def dashboard(
         ).fetchall()
         for d in details:
             detail_map[d["yj_code"]] = d
+    def _detail(yj, col):
+        d = detail_map.get(yj)
+        return d[col] if d is not None else None
     drug_data = [
         {
             "yj_code": r["yj_code"], "n": r["n"], "qty": r["qty"], "valid_n": r["valid_n"],
-            "drug_name": detail_map.get(r["yj_code"], {}).get("drug_name") if r["yj_code"] in detail_map else None,
-            "drug_unit": detail_map.get(r["yj_code"], {}).get("drug_unit") if r["yj_code"] in detail_map else None,
-            "usage_category": detail_map.get(r["yj_code"], {}).get("usage_category") if r["yj_code"] in detail_map else None,
-            "client_form": detail_map.get(r["yj_code"], {}).get("client_form") if r["yj_code"] in detail_map else None,
-            "master_price": detail_map.get(r["yj_code"], {}).get("master_price") if r["yj_code"] in detail_map else None,
-            "generic_name": detail_map.get(r["yj_code"], {}).get("generic_name") if r["yj_code"] in detail_map else None,
+            "drug_name": _detail(r["yj_code"], "drug_name"),
+            "drug_unit": _detail(r["yj_code"], "drug_unit"),
+            "usage_category": _detail(r["yj_code"], "usage_category"),
+            "client_form": _detail(r["yj_code"], "client_form"),
+            "master_price": _detail(r["yj_code"], "master_price"),
+            "generic_name": _detail(r["yj_code"], "generic_name"),
         }
         for r in drug_agg
     ]
