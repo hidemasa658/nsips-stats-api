@@ -282,9 +282,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="refresh" content="60">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
 <title>nsips-stats ダッシュボード</title>
 <style>
+:root {{ color-scheme: light; }}
 * {{ box-sizing: border-box; }}
+html, body {{ background: #ffffff; }}
 body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; max-width: 1200px; margin: 20px auto; padding: 0 20px; color: #222; line-height: 1.5; }}
 h1 {{ border-bottom: 3px solid #333; padding-bottom: 8px; margin-bottom: 20px; }}
 h2 {{ margin-top: 40px; color: #444; border-left: 4px solid #3b82f6; padding-left: 10px; }}
