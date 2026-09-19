@@ -134,14 +134,15 @@ def parse_nsips(body: str) -> dict:
 
         if rec.startswith("VER"):
             # ヘッダ: VER010603,20260919091259,Medicom Pharnes,...
-            # フィールド 1 の 先頭 8 桁 = 調剤日 (YYYYMMDD)、14 桁で調剤日時
+            # フィールド 1 の 先頭 8 桁 = ファイル出力日時 (YYYYMMDDHHMMSS)
+            # 注意: バッチエクスポート時は 「エクスポート時刻」 になり、
+            # 実際の処方日 (record 2 [4]) と大きく乖離することがある。
+            # dispensed_at のみここでセット (dispense_date は record 2 [4] を優先)
             ts = _col(fields, 1)
-            if ts and len(ts) >= 8 and ts[:8].isdigit():
-                result["dispense_date"] = ts[:8]  # "20260919"
-                if len(ts) >= 14 and ts[:14].isdigit():
-                    result["dispensed_at"] = (
-                        f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]}T{ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
-                    )
+            if ts and len(ts) >= 14 and ts[:14].isdigit():
+                result["dispensed_at"] = (
+                    f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]}T{ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
+                )
             continue
 
         if rec == "5":
@@ -176,12 +177,17 @@ def parse_nsips(body: str) -> dict:
             }
 
         elif rec == "2":
+            presc_date = _col(fields, 4)
             result["prescription"] = {
-                "prescription_date": _col(fields, 4),
+                "prescription_date": presc_date,
                 "clinic_code": _col(fields, 12),
                 "clinic_name": _col(fields, 14),
                 "doctor_name": None,
             }
+            # dispense_date は record 2 [4] の 処方日 を優先。VER は
+            # バッチエクスポートで乖離するため 信頼できない。
+            if presc_date and len(presc_date) >= 8 and presc_date[:8].isdigit():
+                result["dispense_date"] = presc_date[:8]
 
         elif rec == "3":
             rp_no = _col(fields, 1)
