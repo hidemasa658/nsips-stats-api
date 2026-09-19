@@ -330,6 +330,25 @@ tr:hover {{ background: #f9f9f9; }}
 .kpi .val {{ font-size: 22px; font-weight: bold; color: #0f172a; font-variant-numeric: tabular-nums; }}
 .kpi .lbl {{ font-size: 11px; color: #475569; margin-top: 2px; }}
 .kpi-section-title {{ font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 20px 0 4px; padding-left: 4px; }}
+
+/* 調剤報酬明細書スタイル */
+.receipt {{ max-width: 640px; margin: 12px 0; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }}
+.receipt table {{ width: 100%; border-collapse: collapse; background: #fff; border: 2px solid #334155; }}
+.receipt th, .receipt td {{ padding: 8px 12px; border-bottom: 1px solid #cbd5e1; vertical-align: middle; }}
+.receipt .cat-header {{ background: #f1f5f9; font-weight: bold; color: #0f172a; border-top: 1.5px solid #334155; }}
+.receipt .cat-header td {{ padding: 6px 12px; font-size: 13px; }}
+.receipt .item-name {{ color: #334155; font-size: 13px; padding-left: 24px; }}
+.receipt .item-code {{ color: #94a3b8; font-size: 10px; margin-left: 4px; }}
+.receipt .num {{ text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; color: #0f172a; min-width: 90px; }}
+.receipt .subtotal {{ background: #fafafa; font-weight: 600; }}
+.receipt .subtotal td {{ padding: 6px 12px; color: #475569; }}
+.receipt .subtotal .num {{ font-size: 15px; color: #0f172a; }}
+.receipt .grand {{ background: #0f172a; color: #fff; font-weight: bold; border-top: 2px solid #0f172a; }}
+.receipt .grand td {{ padding: 10px 12px; color: #fff; }}
+.receipt .grand .num {{ font-size: 18px; color: #fff; }}
+.receipt .copay {{ background: #fef3c7; font-weight: bold; }}
+.receipt .copay td {{ padding: 8px 12px; color: #78350f; }}
+.receipt .copay .num {{ font-size: 16px; color: #78350f; }}
 </style>
 
 <div class="kpi-section-title">{main_label} / {cmp_label} (調剤日ベース)</div>
@@ -353,17 +372,36 @@ tr:hover {{ background: #f9f9f9; }}
   <div class="kpi accent-orange"><div class="val">{mix_total}</div><div class="lbl">計量混合加算 件数</div></div>
 </div>
 
-<div class="kpi-section-title">経営集計 (record 5 内訳)</div>
-<div class="kpi-grid">
-  <div class="kpi accent-green"><div class="val">{t_total_points:,}</div><div class="lbl">総請求点数 [5]</div></div>
-  <div class="kpi accent-green"><div class="val">{t_patient_copay:,}</div><div class="lbl">総患者負担金 (円) [13]</div></div>
-  <div class="kpi accent-blue"><div class="val">{t_drug_fee:,}</div><div class="lbl">薬剤料 [1]</div></div>
-  <div class="kpi accent-blue"><div class="val">{t_dispensing_fee_total:,}</div><div class="lbl">調剤料 [2]</div></div>
-  <div class="kpi accent-blue"><div class="val">{t_pharmacy_mgmt_fee_total:,}</div><div class="lbl">薬学管理料 [3]</div></div>
-  <div class="kpi"><div class="val">{t_dispensing_base:,}</div><div class="lbl">調剤基本料 [7]</div></div>
-  <div class="kpi"><div class="val">{t_dispensing_add:,}</div><div class="lbl">調剤加算 (混合等) [8]</div></div>
-  <div class="kpi"><div class="val">{t_drug_guidance:,}</div><div class="lbl">服薬管理指導料 [9]</div></div>
-  <div class="kpi"><div class="val">{t_pharmacy_mgmt_other:,}</div><div class="lbl">薬管その他 (調剤管理料等) [11]</div></div>
+<div class="kpi-section-title">調剤報酬明細 ({main_label} 累計)</div>
+<div class="receipt">
+  <table>
+    <tr class="cat-header"><td colspan="2">■ 調剤技術料</td></tr>
+    <tr><td class="item-name">調剤基本料 (+地域加算)<span class="item-code">[7]</span></td>
+        <td class="num">{t_dispensing_base:,}</td></tr>
+    <tr><td class="item-name">調剤料<span class="item-code">[2]</span></td>
+        <td class="num">{t_dispensing_fee_total:,}</td></tr>
+    <tr><td class="item-name">調剤加算 (計量混合加算等)<span class="item-code">[8]</span></td>
+        <td class="num">{t_dispensing_add:,}</td></tr>
+    <tr class="subtotal"><td style="padding-left:24px">小　計</td>
+        <td class="num">{t_tech_subtotal:,}</td></tr>
+
+    <tr class="cat-header"><td colspan="2">■ 薬学管理料</td></tr>
+    <tr><td class="item-name">服薬管理指導料<span class="item-code">[9]</span></td>
+        <td class="num">{t_drug_guidance:,}</td></tr>
+    <tr><td class="item-name">その他 (調剤管理料・特薬管加算等)<span class="item-code">[11]</span></td>
+        <td class="num">{t_pharmacy_mgmt_other:,}</td></tr>
+    <tr class="subtotal"><td style="padding-left:24px">小　計<span class="item-code">[3]</span></td>
+        <td class="num">{t_pharmacy_mgmt_fee_total:,}</td></tr>
+
+    <tr class="cat-header"><td colspan="2">■ 薬剤料</td></tr>
+    <tr class="subtotal"><td style="padding-left:24px">合　計<span class="item-code">[1]</span></td>
+        <td class="num">{t_drug_fee:,}</td></tr>
+
+    <tr class="grand"><td>合　計 (請求点数)<span class="item-code" style="color:#94a3b8">[5]</span></td>
+        <td class="num">{t_total_points:,} 点</td></tr>
+    <tr class="copay"><td>患者負担金<span class="item-code" style="color:#a16207">[13]</span></td>
+        <td class="num">{t_patient_copay:,} 円</td></tr>
+  </table>
 </div>
 
 <div class="kpi-section-title">基本料 累計 (record 6 基本料バリアント)</div>
@@ -945,6 +983,7 @@ def dashboard(
         t_dispensing_add=t_agg["dispensing_add"],
         t_drug_guidance=t_agg["drug_guidance"],
         t_pharmacy_mgmt_other=t_agg["pharmacy_mgmt_other"],
+        t_tech_subtotal=(t_agg["dispensing_base"] + t_agg["dispensing_fee_total"] + t_agg["dispensing_add"]),
         recent_rows=recent_rows_html,
         now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
