@@ -586,24 +586,51 @@ def dashboard(
         f"SELECT COUNT(DISTINCT d.yj_code) FROM drugs d JOIN prescriptions p ON d.prescription_id = p.id WHERE d.yj_code IS NOT NULL AND {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}"
     ).fetchone()[0]
 
-    drug_data = conn.execute(
+    # 高速化: 一次集計は drugs のみ (JOIN 無し) → その後 TOP50 の詳細を fetch
+    drug_agg = conn.execute(
         f"""SELECT d.yj_code,
-                  COALESCE(dm.name, d.name) AS drug_name,
-                  COALESCE(dm.unit, d.unit) AS drug_unit,
-                  dm.usage_category,
-                  d.form AS client_form,
-                  dm.unit_price AS master_price,
-                  dm.generic_name,
                   COUNT(*) AS n,
                   SUM(d.total_quantity) AS qty,
                   SUM(CASE WHEN d.total_quantity IS NOT NULL THEN 1 ELSE 0 END) AS valid_n
            FROM drugs d
            JOIN prescriptions p ON d.prescription_id = p.id
-           LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
-           WHERE {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}
-           GROUP BY d.yj_code, drug_name, drug_unit, dm.usage_category, d.form, dm.unit_price, dm.generic_name
+           WHERE d.yj_code IS NOT NULL AND {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}
+           GROUP BY d.yj_code
            ORDER BY n DESC, qty DESC LIMIT 50"""
     ).fetchall()
+    # TOP50 の YJ コードだけ詳細情報を IN で引き当て
+    top_yjs = [r["yj_code"] for r in drug_agg if r["yj_code"]]
+    detail_map: dict[str, dict] = {}
+    if top_yjs:
+        placeholders = ",".join("?" * len(top_yjs))
+        details = conn.execute(
+            f"""SELECT d.yj_code,
+                       MAX(COALESCE(dm.name, d.name)) AS drug_name,
+                       MAX(COALESCE(dm.unit, d.unit)) AS drug_unit,
+                       MAX(dm.usage_category) AS usage_category,
+                       MAX(d.form) AS client_form,
+                       MAX(dm.unit_price) AS master_price,
+                       MAX(dm.generic_name) AS generic_name
+                FROM drugs d
+                LEFT JOIN drug_master dm ON d.yj_code = dm.yj_code
+                WHERE d.yj_code IN ({placeholders})
+                GROUP BY d.yj_code""",
+            top_yjs,
+        ).fetchall()
+        for d in details:
+            detail_map[d["yj_code"]] = d
+    drug_data = [
+        {
+            "yj_code": r["yj_code"], "n": r["n"], "qty": r["qty"], "valid_n": r["valid_n"],
+            "drug_name": detail_map.get(r["yj_code"], {}).get("drug_name") if r["yj_code"] in detail_map else None,
+            "drug_unit": detail_map.get(r["yj_code"], {}).get("drug_unit") if r["yj_code"] in detail_map else None,
+            "usage_category": detail_map.get(r["yj_code"], {}).get("usage_category") if r["yj_code"] in detail_map else None,
+            "client_form": detail_map.get(r["yj_code"], {}).get("client_form") if r["yj_code"] in detail_map else None,
+            "master_price": detail_map.get(r["yj_code"], {}).get("master_price") if r["yj_code"] in detail_map else None,
+            "generic_name": detail_map.get(r["yj_code"], {}).get("generic_name") if r["yj_code"] in detail_map else None,
+        }
+        for r in drug_agg
+    ]
 
     # 薬品名からの 剤形 キーワード判定 (順序が重要 - 長いキーワード優先)
     _FORM_KEYWORDS = [
