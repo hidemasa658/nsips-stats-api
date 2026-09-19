@@ -1019,24 +1019,29 @@ def dashboard(
         "SELECT COUNT(DISTINCT prescription_id) FROM fees WHERE is_mix_flag = 1"
     ).fetchone()[0]
 
-    # 週次集計: dispense_date (YYYYMMDD) を ISO 週 (YYYY-Wnn) に変換
-    # SQLite の STRFTIME は 'YYYY-MM-DD' 形式が必要なので変換
-    mix_weekly = conn.execute(
-        """SELECT STRFTIME('%Y-%W',
-                  SUBSTR(COALESCE(p.dispense_date, STRFTIME('%Y%m%d', p.detected_at)), 1, 4) || '-' ||
-                  SUBSTR(COALESCE(p.dispense_date, STRFTIME('%Y%m%d', p.detected_at)), 5, 2) || '-' ||
-                  SUBSTR(COALESCE(p.dispense_date, STRFTIME('%Y%m%d', p.detected_at)), 7, 2)) AS wk,
-                  COUNT(DISTINCT p.id) AS n
+    # 週次集計: 混合発生 prescription の dispense_date だけ取得 (小さい集合) →
+    # Python で ISO 週に変換して集計
+    mix_dates = conn.execute(
+        """SELECT p.dispense_date
            FROM prescriptions p
            JOIN fees f ON f.prescription_id = p.id
-           WHERE f.is_mix_flag = 1
-             AND p.dispense_date IS NOT NULL
-           GROUP BY wk
-           ORDER BY wk DESC
-           LIMIT 26"""
+           WHERE f.is_mix_flag = 1 AND p.dispense_date IS NOT NULL"""
     ).fetchall()
-    # 昇順に戻す
-    mix_weekly = list(reversed(mix_weekly))
+    from datetime import date as _date
+    from collections import Counter as _Counter
+    _weekly_counter: _Counter = _Counter()
+    for r in mix_dates:
+        d = r["dispense_date"]
+        if not d or len(d) < 8:
+            continue
+        try:
+            dt = _date(int(d[:4]), int(d[4:6]), int(d[6:8]))
+            iso = dt.isocalendar()
+            _weekly_counter[f"{iso[0]}-{iso[1]:02d}"] += 1
+        except ValueError:
+            continue
+    sorted_weeks = sorted(_weekly_counter.items())[-26:]  # 直近 26 週
+    mix_weekly = [{"wk": wk, "n": n} for wk, n in sorted_weeks]
 
     # 直近12週で 平均 + 先週件数
     recent12 = mix_weekly[-12:] if len(mix_weekly) >= 12 else mix_weekly
