@@ -577,12 +577,6 @@ document.addEventListener('DOMContentLoaded', function() {{
 
 <h2>混合処方 (外用剤の計量混合) 集計</h2>
 
-<div class="mix-summary">
-  <div class="mix-kpi"><div class="v">{mix_total_all:,}</div><div class="l">全期間 総件数</div></div>
-  <div class="mix-kpi"><div class="v">{mix_weekly_avg:.1f}</div><div class="l">週平均 (直近12週)</div></div>
-  <div class="mix-kpi"><div class="v">{mix_last_week:,}</div><div class="l">先週の件数</div></div>
-</div>
-
 <h3 style="font-size:14px;margin:20px 0 8px;color:#475569;">週次トレンド (直近 26 週)</h3>
 <div class="chart-wrap">{weekly_chart}</div>
 
