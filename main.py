@@ -384,6 +384,15 @@ tr:hover {{ background: #f9f9f9; }}
 .receipt .copay td {{ padding: 8px 12px; color: #78350f; }}
 .receipt .copay .num {{ font-size: 16px; color: #78350f; }}
 
+/* コンパクト stats grid (旧KPIカードのタイト版) */
+.stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 20px; margin: 8px 0 16px; font-size: 12px; border: 1px solid #e5e7eb; border-radius: 4px; padding: 6px 8px; background: #fafafa; }}
+.stats-grid .r {{ display: flex; justify-content: space-between; align-items: baseline; padding: 3px 4px; border-bottom: 1px dotted #e5e7eb; }}
+.stats-grid .r:last-child {{ border-bottom: none; }}
+.stats-grid .l {{ color: #64748b; font-size: 11px; }}
+.stats-grid .v {{ font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; font-size: 13px; }}
+.stats-grid .v.accent {{ color: #059669; }}
+.stats-grid-title {{ font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 12px 0 2px; padding-left: 4px; }}
+
 /* 混合処方 週次トレンド */
 .mix-summary {{ display: flex; gap: 12px; margin: 12px 0; flex-wrap: wrap; }}
 .mix-kpi {{ background: #fef3c7; border-left: 4px solid #d97706; padding: 8px 14px; border-radius: 6px; }}
@@ -474,25 +483,25 @@ document.addEventListener('DOMContentLoaded', function() {{
 }});
 </script>
 
-<div class="kpi-section-title">{main_label} / {cmp_label} (調剤日ベース)</div>
-<div class="kpi-grid">
-  <div class="kpi accent-green"><div class="val">{main_count}</div><div class="lbl">{main_label} 処方件数</div></div>
-  <div class="kpi accent-green"><div class="val">{main_points:,}</div><div class="lbl">{main_label} 請求点数</div></div>
-  <div class="kpi accent-green"><div class="val">{main_copay:,}</div><div class="lbl">{main_label} 患者負担金</div></div>
-  <div class="kpi"><div class="val">{cmp_count}</div><div class="lbl">{cmp_label} 処方件数</div></div>
-  <div class="kpi"><div class="val">{cmp_points:,}</div><div class="lbl">{cmp_label} 請求点数</div></div>
-  <div class="kpi"><div class="val">{cmp_copay:,}</div><div class="lbl">{cmp_label} 患者負担金</div></div>
+<div class="stats-grid-title">{main_label} / {cmp_label} (調剤日ベース)</div>
+<div class="stats-grid">
+  <div class="r"><span class="l">{main_label} 処方件数</span><span class="v accent">{main_count:,}</span></div>
+  <div class="r"><span class="l">{main_label} 請求点数</span><span class="v accent">{main_points:,}</span></div>
+  <div class="r"><span class="l">{main_label} 患者負担金</span><span class="v accent">{main_copay:,} 円</span></div>
+  <div class="r"><span class="l">{cmp_label} 処方件数</span><span class="v">{cmp_count:,}</span></div>
+  <div class="r"><span class="l">{cmp_label} 請求点数</span><span class="v">{cmp_points:,}</span></div>
+  <div class="r"><span class="l">{cmp_label} 患者負担金</span><span class="v">{cmp_copay:,} 円</span></div>
 </div>
 
-<div class="kpi-section-title">基本 (全期間)</div>
-<div class="kpi-grid">
-  <div class="kpi accent-purple"><div class="val">{prescription_count}</div><div class="lbl">総処方受入件数</div></div>
-  <div class="kpi accent-purple"><div class="val">{drug_kinds}</div><div class="lbl">薬品種類</div></div>
-  <div class="kpi accent-orange"><div class="val">{form_internal}</div><div class="lbl">内用 (回数)</div></div>
-  <div class="kpi accent-orange"><div class="val">{form_external}</div><div class="lbl">外用 (回数)</div></div>
-  <div class="kpi accent-orange"><div class="val">{form_injection}</div><div class="lbl">注射 (回数)</div></div>
-  <div class="kpi accent-orange"><div class="val">{form_other}</div><div class="lbl">その他 (回数)</div></div>
-  <div class="kpi accent-orange"><div class="val">{mix_total}</div><div class="lbl">計量混合加算 件数</div></div>
+<div class="stats-grid-title">基本 (全期間)</div>
+<div class="stats-grid">
+  <div class="r"><span class="l">総処方受入件数</span><span class="v">{prescription_count:,}</span></div>
+  <div class="r"><span class="l">薬品種類</span><span class="v">{drug_kinds:,}</span></div>
+  <div class="r"><span class="l">内用 (回数)</span><span class="v">{form_internal:,}</span></div>
+  <div class="r"><span class="l">外用 (回数)</span><span class="v">{form_external:,}</span></div>
+  <div class="r"><span class="l">注射 (回数)</span><span class="v">{form_injection:,}</span></div>
+  <div class="r"><span class="l">その他 (回数)</span><span class="v">{form_other:,}</span></div>
+  <div class="r"><span class="l">計量混合加算 件数</span><span class="v">{mix_total:,}</span></div>
 </div>
 
 <div class="kpi-section-title">調剤報酬明細 ({main_label} 累計)</div>
