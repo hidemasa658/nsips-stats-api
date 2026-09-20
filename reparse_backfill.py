@@ -14,7 +14,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from db import connect, init_db
+from db import connect, init_db, update_mix_events_for_prescription
 from nsips_parser import parse_nsips
 
 load_dotenv()
@@ -116,6 +116,9 @@ def reparse_all(db_path: Path) -> tuple[int, int]:
              parsed.get("dispense_date"), parsed.get("dispensed_at"),
              pid),
         )
+
+        # 事前計算 mix_events 更新
+        update_mix_events_for_prescription(conn, pid)
 
         updated += 1
         if updated % 20 == 0:

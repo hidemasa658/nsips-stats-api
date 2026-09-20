@@ -167,6 +167,9 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
             ),
         )
 
+    # mix_events を この処方分だけ更新 (事前計算テーブル)
+    from db import update_mix_events_for_prescription
+    update_mix_events_for_prescription(conn, presc_id)
     conn.commit()
     # 新規データが入ったら dashboard キャッシュを破棄
     global _DASHBOARD_CACHE
@@ -1132,30 +1135,11 @@ def dashboard(
     _last_day = _mr(_today.year - 1, _today.month)[1]
     prev_ym_end = f"{_today.year - 1}{_today.month:02d}{_last_day:02d}"
 
-    # 混合処方: combo × 量 で集計 → Python で combo ごとに内訳を組立
+    # 混合処方: 事前計算済み mix_events から集計 (JOIN 排除で高速)
     combos_data = conn.execute(
-        f"""
-        WITH mix AS (
-          SELECT r.id AS rp_id,
-                 p.dispense_date,
-                 GROUP_CONCAT(d.name, ' + ') AS combo,
-                 ROUND(SUM(COALESCE(d.quantity, 0)), 2) AS mix_qty,
-                 MAX(d.unit) AS unit
-          FROM rps r
-          JOIN drugs d ON d.prescription_id = r.prescription_id AND d.rp_no = r.rp_no
-          JOIN prescriptions p ON p.id = r.prescription_id
-          WHERE r.is_mixed = 1
-            AND r.site_text = '混合'
-            AND d.name IS NOT NULL
-            AND d.form = '外用'
-          GROUP BY r.id
-        )
-        SELECT combo, mix_qty, unit, dispense_date, COUNT(*) AS n
-        FROM mix
-        WHERE combo IS NOT NULL
-        GROUP BY combo, mix_qty, unit, dispense_date
-        ORDER BY combo, mix_qty
-        """
+        """SELECT combo, mix_qty, unit, dispense_date, COUNT(*) AS n
+           FROM mix_events
+           GROUP BY combo, mix_qty, unit, dispense_date"""
     ).fetchall()
 
     # ---- combo ごとの多角的集計 (年度/月/週) ----

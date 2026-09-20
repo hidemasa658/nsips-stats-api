@@ -104,6 +104,22 @@ def init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE drugs ADD COLUMN total_quantity REAL")
     # カバリング index (total_quantity 追加後に作成する必要あり)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_drugs_yj_cover ON drugs(yj_code, total_quantity)")
+    # mix_events (事前計算済み 混合処方 マテリアライズ) - dashboard の重量計算削減用
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS mix_events (
+          prescription_id INTEGER NOT NULL,
+          rp_no TEXT,
+          combo TEXT NOT NULL,
+          dispense_date TEXT,
+          mix_qty REAL,
+          unit TEXT,
+          PRIMARY KEY (prescription_id, rp_no)
+        );
+        CREATE INDEX IF NOT EXISTS idx_mix_events_dd ON mix_events(dispense_date);
+        CREATE INDEX IF NOT EXISTS idx_mix_events_combo ON mix_events(combo);
+        """
+    )
     # rps テーブル (RP = 用法単位のグルーピング、混合検出用)
     conn.executescript(
         """
@@ -163,3 +179,57 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+
+
+def rebuild_mix_events(conn: sqlite3.Connection) -> int:
+    """rps/drugs/prescriptions から mix_events を全再構築。件数を返す。"""
+    conn.execute("DELETE FROM mix_events")
+    conn.execute(
+        """
+        INSERT INTO mix_events (prescription_id, rp_no, combo, dispense_date, mix_qty, unit)
+        SELECT r.prescription_id,
+               r.rp_no,
+               GROUP_CONCAT(d.name, ' + ') AS combo,
+               p.dispense_date,
+               ROUND(SUM(COALESCE(d.quantity, 0)), 2) AS mix_qty,
+               MAX(d.unit) AS unit
+        FROM rps r
+        JOIN drugs d ON d.prescription_id = r.prescription_id AND d.rp_no = r.rp_no
+        JOIN prescriptions p ON p.id = r.prescription_id
+        WHERE r.is_mixed = 1
+          AND r.site_text = '混合'
+          AND d.name IS NOT NULL
+          AND d.form = '外用'
+        GROUP BY r.id
+        HAVING combo IS NOT NULL
+        """
+    )
+    conn.commit()
+    return conn.execute("SELECT COUNT(*) FROM mix_events").fetchone()[0]
+
+
+def update_mix_events_for_prescription(conn: sqlite3.Connection, prescription_id: int) -> None:
+    """1 処方分の mix_events を upsert (削除 → 再挿入)。ingest/reparse で呼ぶ。"""
+    conn.execute("DELETE FROM mix_events WHERE prescription_id = ?", (prescription_id,))
+    conn.execute(
+        """
+        INSERT INTO mix_events (prescription_id, rp_no, combo, dispense_date, mix_qty, unit)
+        SELECT r.prescription_id,
+               r.rp_no,
+               GROUP_CONCAT(d.name, ' + ') AS combo,
+               p.dispense_date,
+               ROUND(SUM(COALESCE(d.quantity, 0)), 2) AS mix_qty,
+               MAX(d.unit) AS unit
+        FROM rps r
+        JOIN drugs d ON d.prescription_id = r.prescription_id AND d.rp_no = r.rp_no
+        JOIN prescriptions p ON p.id = r.prescription_id
+        WHERE r.prescription_id = ?
+          AND r.is_mixed = 1
+          AND r.site_text = '混合'
+          AND d.name IS NOT NULL
+          AND d.form = '外用'
+        GROUP BY r.id
+        HAVING combo IS NOT NULL
+        """,
+        (prescription_id,),
+    )
