@@ -652,7 +652,7 @@ document.addEventListener('DOMContentLoaded', function() {{
 </table>
 </details>
 
-<h2>地域支援体制加算 実績 月別推移 <span style="font-size:13px;color:#64748b;font-weight:normal;">(全期間)</span></h2>
+<h2>地域支援体制加算 実績 月別推移 <span style="font-size:13px;color:#64748b;font-weight:normal;">(直近 12 ヶ月)</span></h2>
 <p style="color:#64748b;font-size:12px;margin-bottom:12px;">施設基準に係る主要加算の月別算定回数。右端の数値 = 最新月の値。</p>
 <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:10px;margin-bottom:24px;">
 {chiiki_charts}
@@ -1539,8 +1539,21 @@ def dashboard(
         ("服薬情報等提供料", "#c026d3", ["服薬情報等提供"]),
         ("小児特定加算", "#f59e0b", ["小児特定"]),
     ]
+    # 直近 12 ヶ月の月キー (欠損月も 0 で埋める)
+    _last12_months = []
+    _cur = _today.replace(day=1)
+    for _ in range(12):
+        _last12_months.append(f"{_cur.year:04d}{_cur.month:02d}")
+        # 前月へ
+        if _cur.month == 1:
+            _cur = _cur.replace(year=_cur.year - 1, month=12)
+        else:
+            _cur = _cur.replace(month=_cur.month - 1)
+    _last12_months = list(reversed(_last12_months))  # 古い→新しい
+    _chiiki_min_ym = _last12_months[0]
+
     def _chiiki_data(patterns: list) -> list:
-        """パターンに合致する加算の月別合計 count を [(ym, n), ...] で返す。"""
+        """パターンに合致する加算の月別合計 count を [(ym, n), ...] で返す。直近12ヶ月。"""
         conds = " OR ".join(f"COALESCE(m.name, f.name) LIKE '%{p}%'" for p in patterns)
         rows = conn.execute(
             f"""SELECT SUBSTR(p.dispense_date, 1, 6) AS ym, SUM(COALESCE(f.count, 1)) AS n
@@ -1548,10 +1561,13 @@ def dashboard(
                 JOIN prescriptions p ON f.prescription_id = p.id
                 LEFT JOIN fee_master m ON f.code = m.code
                 WHERE p.dispense_date IS NOT NULL
+                  AND SUBSTR(p.dispense_date, 1, 6) >= '{_chiiki_min_ym}'
                   AND ({conds})
                 GROUP BY ym ORDER BY ym"""
         ).fetchall()
-        return [(r["ym"], r["n"]) for r in rows if r["ym"]]
+        data_map = {r["ym"]: r["n"] for r in rows if r["ym"]}
+        # 欠損月を 0 で埋めて 12 ヶ月分揃える
+        return [(ym, data_map.get(ym, 0)) for ym in _last12_months]
 
     def _svg_line(data, color, label):
         """小型 折れ線グラフを SVG 文字列で返す。data=[(ym,n),...]"""
