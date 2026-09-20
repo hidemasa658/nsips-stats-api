@@ -384,6 +384,43 @@ tr:hover {{ background: #f9f9f9; }}
 .receipt .copay td {{ padding: 8px 12px; color: #78350f; }}
 .receipt .copay .num {{ font-size: 16px; color: #78350f; }}
 
+/* 詳細調剤報酬明細帳票スタイル (image 16/17 レイアウト) */
+.chotei-report {{
+  font-family: "SFMono-Regular", "Yu Gothic Mono", Menlo, Consolas, monospace;
+  font-size: 11px; color: #0f172a; margin: 12px 0 24px;
+  border: 1.5px solid #334155; background: #fff;
+}}
+.chotei-report .cr-title {{ font-size: 12px; padding: 6px 10px; background: #f1f5f9; border-bottom: 1px solid #334155; font-weight: 600; }}
+.chotei-report table {{ width: 100%; border-collapse: collapse; }}
+.chotei-report td {{ padding: 2px 6px; border: 0.5px solid #cbd5e1; vertical-align: top; }}
+.chotei-report .grp {{
+  writing-mode: vertical-rl; text-orientation: upright; text-align: center;
+  background: #f8fafc; font-weight: 600; color: #334155; padding: 8px 4px;
+  width: 22px; min-width: 22px; letter-spacing: 3px;
+}}
+.chotei-report .lbl {{ color: #334155; padding-left: 10px; }}
+.chotei-report .lbl.sub {{ padding-left: 22px; color: #64748b; font-size: 10px; }}
+.chotei-report .lbl.sect {{ font-weight: 600; color: #0f172a; background: #f8fafc; }}
+.chotei-report .lbl.total {{ font-weight: 600; background: #f1f5f9; }}
+.chotei-report .n, .chotei-report .amt, .chotei-report .pct {{
+  text-align: right; font-variant-numeric: tabular-nums;
+  min-width: 60px; padding-right: 8px;
+}}
+.chotei-report .pct {{ color: #64748b; font-size: 10px; min-width: 55px; }}
+.chotei-report tr.zero .n, .chotei-report tr.zero .amt, .chotei-report tr.zero .pct {{ color: #cbd5e1; }}
+.chotei-report .subtotal {{ background: #fef3c7; font-weight: 600; }}
+.chotei-report .grand-total {{ background: #0f172a; color: #fff; font-weight: bold; }}
+.chotei-report .grand-total td {{ color: #fff; padding: 4px 8px; font-size: 12px; }}
+.chotei-report th {{
+  background: #e2e8f0; color: #475569; padding: 3px 6px;
+  border: 0.5px solid #cbd5e1; font-weight: 500; font-size: 10px;
+  text-align: right;
+}}
+.chotei-report .double-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0; }}
+.chotei-report .double-col > div {{ border: none; }}
+.chotei-report .double-col table {{ border-left: 1.5px solid #334155; }}
+.chotei-report .double-col > div:first-child table {{ border-left: none; }}
+
 /* 薬局業務日報 合計欄スタイル */
 .report-daily {{
   font-family: "SFMono-Regular", "Yu Gothic Mono", Menlo, Consolas, monospace;
@@ -550,38 +587,88 @@ document.addEventListener('DOMContentLoaded', function() {{
   </div>
 </div>
 
-<div class="kpi-section-title">調剤報酬明細 ({main_label} 累計)</div>
-<div class="receipt">
+<div class="chotei-report">
+  <div class="cr-title">調剤報酬明細 ({main_label})</div>
   <table>
-    <tr class="cat-header"><td colspan="2">■ 調剤技術料</td></tr>
-    <tr><td class="item-name">調剤基本料 (+地域加算)<span class="item-code">[7]</span></td>
-        <td class="num">{t_dispensing_base:,}</td></tr>
-    <tr><td class="item-name">調剤料<span class="item-code">[2]</span></td>
-        <td class="num">{t_dispensing_fee_total:,}</td></tr>
-    <tr><td class="item-name">調剤加算 (計量混合加算等)<span class="item-code">[8]</span></td>
-        <td class="num">{t_dispensing_add:,}</td></tr>
-    <tr class="subtotal"><td style="padding-left:24px">小　計</td>
-        <td class="num">{t_tech_subtotal:,}</td></tr>
+    <colgroup>
+      <col style="width:22px;">
+      <col style="width:110px;">
+      <col style="width:60px;">
+      <col style="width:75px;">
+      <col style="width:55px;">
+      <col style="width:22px;">
+      <col style="width:110px;">
+      <col style="width:60px;">
+      <col style="width:75px;">
+      <col style="width:55px;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th></th><th></th><th>件数</th><th>金額</th><th>構成比</th>
+        <th></th><th></th><th>件数</th><th>金額</th><th>構成比</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- 調剤技術料: 左右 交互出力 -->
+      {chotei_tech_rows}
+      <!-- 薬剤料 -->
+      {chotei_yakuzai_rows}
+      <tr>{chotei_yakuzai_total_row_cells}</tr>
+      <!-- 減算・その他 -->
+      {chotei_misc_rows}
+      <!-- 合計 -->
+      <tr class="grand-total">
+        <td colspan="8" style="text-align:right;">【合　計】</td>
+        <td class="amt">{cr_grand_total:,}</td>
+        <td class="pct" style="color:#fff;">100.00 %</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
 
-    <tr class="cat-header"><td colspan="2">■ 薬学管理料</td></tr>
-    <tr><td class="item-name">服薬管理指導料<span class="item-code">[9]</span></td>
-        <td class="num">{t_drug_guidance:,}</td></tr>
-    <tr><td class="item-name">その他 (調剤管理料・特薬管加算等)<span class="item-code">[11]</span></td>
-        <td class="num">{t_pharmacy_mgmt_other:,}</td></tr>
-    <tr class="subtotal"><td style="padding-left:24px">小　計<span class="item-code">[3]</span></td>
-        <td class="num">{t_pharmacy_mgmt_fee_total:,}</td></tr>
+<div class="chotei-report">
+  <div class="cr-title">薬学管理料 内訳 ({main_label})</div>
+  <table>
+    <colgroup>
+      <col style="width:22px;">
+      <col style="width:130px;">
+      <col style="width:60px;">
+      <col style="width:75px;">
+      <col style="width:55px;">
+      <col style="width:22px;">
+      <col style="width:130px;">
+      <col style="width:60px;">
+      <col style="width:75px;">
+      <col style="width:55px;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th></th><th></th><th>件数</th><th>金額</th><th>構成比</th>
+        <th></th><th></th><th>件数</th><th>金額</th><th>構成比</th>
+      </tr>
+    </thead>
+    <tbody>
+      {chotei_yakugaku_rows}
+    </tbody>
+  </table>
+</div>
 
-    <tr class="cat-header"><td colspan="2">■ 薬剤料</td></tr>
-    <tr class="subtotal"><td style="padding-left:24px">合　計<span class="item-code">[1]</span></td>
-        <td class="num">{t_drug_fee:,}</td></tr>
-
-    <tr class="grand"><td>合　計 (請求点数)<span class="item-code" style="color:#94a3b8">[5]</span></td>
-        <td class="num">{t_total_points:,} 点</td></tr>
-    <tr class="copay"><td>患者負担金 (保険内)<span class="item-code" style="color:#a16207">[13]</span></td>
-        <td class="num">{t_patient_copay:,} 円</td></tr>
-    {senteryoyo_row}
-    <tr class="copay"><td>総患者負担額<span class="item-code" style="color:#a16207">[17]</span></td>
-        <td class="num">{t_patient_copay_total:,} 円</td></tr>
+<!-- 従来の 患者負担・選定療養費 コンパクトサマリ -->
+<div style="margin: 12px 0 24px; font-size: 13px;">
+  <table style="max-width:640px; border-collapse:collapse;">
+    <tr style="background:#0f172a;color:#fff;">
+      <td style="padding:6px 12px;">合　計 (請求点数) [5]</td>
+      <td style="padding:6px 12px;text-align:right;font-weight:bold;">{t_total_points:,} 点</td>
+    </tr>
+    <tr style="background:#fef3c7;font-weight:600;">
+      <td style="padding:6px 12px;">患者負担金 (保険内) [13]</td>
+      <td style="padding:6px 12px;text-align:right;">{t_patient_copay:,} 円</td>
+    </tr>
+    {senteryoyo_row_simple}
+    <tr style="background:#fef3c7;font-weight:600;">
+      <td style="padding:6px 12px;">総患者負担額 [17]</td>
+      <td style="padding:6px 12px;text-align:right;">{t_patient_copay_total:,} 円</td>
+    </tr>
   </table>
 </div>
 
@@ -746,6 +833,449 @@ document.addEventListener('DOMContentLoaded', function() {{
 
 def _h(v) -> str:
     return html_lib.escape(str(v) if v is not None else "")
+
+
+def _detailed_chotei_kwargs(conn, period_where: str) -> dict:
+    """Image 16/17 準拠の詳細調剤報酬明細帳票を生成 (件数/金額/構成比)。"""
+    _fw = period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')
+
+    # 全 fees を期間内で code 別集計 (count, amount)
+    fees_rows = conn.execute(
+        f"""SELECT f.code AS code, COALESCE(m.name, f.name) AS dname,
+                    SUM(COALESCE(f.count, 1)) AS n,
+                    SUM(COALESCE(f.count, 1) * COALESCE(m.points, f.points, 0)) * 10 AS amt
+             FROM fees f
+             JOIN prescriptions p ON f.prescription_id = p.id
+             LEFT JOIN fee_master m ON f.code = m.code
+             WHERE f.code IS NOT NULL AND {_fw}
+             GROUP BY f.code, dname"""
+    ).fetchall()
+    fee_by_code = {r["code"]: {"n": r["n"] or 0, "amt": int(r["amt"] or 0), "name": r["dname"]} for r in fees_rows}
+
+    # 薬剤別 (剤形別) の集計: drugs から form + rp_no ベースで集計
+    # 内服/屯服/外用/注射 の 剤数と 薬剤料
+    form_agg_rows = conn.execute(
+        f"""SELECT
+              CASE
+                WHEN LENGTH(d.yj_code) >= 7 AND SUBSTR(d.yj_code, 5, 3) GLOB '[0-9][0-9][0-9]'
+                     AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 1 AND 399 THEN '内服'
+                WHEN LENGTH(d.yj_code) >= 7 AND SUBSTR(d.yj_code, 5, 3) GLOB '[0-9][0-9][0-9]'
+                     AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 400 AND 699 THEN '注射'
+                WHEN LENGTH(d.yj_code) >= 7 AND SUBSTR(d.yj_code, 5, 3) GLOB '[0-9][0-9][0-9]'
+                     AND CAST(SUBSTR(d.yj_code, 5, 3) AS INTEGER) BETWEEN 700 AND 999 THEN '外用'
+                ELSE COALESCE(d.form, 'その他')
+              END AS cat,
+              COUNT(DISTINCT d.prescription_id || '/' || d.rp_no) AS n,
+              CAST(SUM(COALESCE(d.total_quantity, d.quantity, 0) * COALESCE(d.unit_price, 0)) AS INTEGER) AS amt_yen
+           FROM drugs d
+           JOIN prescriptions p ON d.prescription_id = p.id
+           WHERE d.yj_code IS NOT NULL AND {_fw}
+           GROUP BY cat"""
+    ).fetchall()
+    form_map = {r["cat"]: {"n": r["n"] or 0, "amt": int(r["amt_yen"] or 0)} for r in form_agg_rows}
+
+    def sum_codes(codes):
+        n = 0; amt = 0
+        for c in codes:
+            entry = fee_by_code.get(c)
+            if entry:
+                n += entry["n"]; amt += entry["amt"]
+        return n, amt
+
+    def sum_prefix(prefix):
+        n = 0; amt = 0
+        for code, entry in fee_by_code.items():
+            if code.startswith(prefix):
+                n += entry["n"]; amt += entry["amt"]
+        return n, amt
+
+    def sum_name(patterns):
+        n = 0; amt = 0
+        for code, entry in fee_by_code.items():
+            name = (entry["name"] or "")
+            if any(p in name for p in patterns):
+                n += entry["n"]; amt += entry["amt"]
+        return n, amt
+
+    # 総合計計算用 (構成比の分母)
+    total_pts_row = conn.execute(
+        f"SELECT COALESCE(SUM(total_points), 0) FROM prescriptions WHERE {period_where}"
+    ).fetchone()
+    grand_total_yen = int((total_pts_row[0] or 0) * 10)
+
+    def pct(amt):
+        return round(amt / grand_total_yen * 100, 2) if grand_total_yen else 0.0
+
+    # ---- 帳票行構造 ----
+    # 各行: (label_class, label, n, amt, pct)
+    # label_class: "sect"(セクション見出し), "sub"(サブ項目/インデント), "row"(通常), "total"(小計)
+
+    # 【調剤基本料】= 4100xxx (調剤基本料) の合計
+    kihonryo_n, kihonryo_amt = sum_prefix("410004")
+
+    # 内服・屯服・外用・注射: 薬剤調製料 コード + 剤形一致
+    # 薬剤調製料 内服 = 420000110/210 (要マスタ確認)
+    naifuku_n, naifuku_amt = sum_name(["薬剤調製料"])  # 一括
+
+    # 夜間・休日等加算: 450000870
+    yakan_n, yakan_amt = sum_codes(["450000870"])
+    # 時間外: 450000470, 430000670, 440014170
+    jikanngai_n, jikanngai_amt = sum_codes(["450000470", "430000670", "440014170", "430000970", "440014470", "450000770"])
+    # 休日: 450000570, 430000770, 440014370
+    kyujitsu_n, kyujitsu_amt = sum_codes(["450000570", "430000770", "440014370"])
+    # 特例: 特例加算
+    tokurei_n, tokurei_amt = sum_name(["特例"])
+    # 深夜: あれば
+    shinya_n, shinya_amt = sum_name(["深夜"])
+    # 麻薬・向精神薬・覚せい剤・毒薬
+    mayaku_n, mayaku_amt = sum_name(["麻薬"])
+    kouseishin_n, kouseishin_amt = sum_name(["向精神"])
+    kakuseizai_n, kakuseizai_amt = sum_name(["覚せい"])
+    dokuyaku_n, dokuyaku_amt = sum_name(["毒薬"])
+    # 電子的調剤 = 医療情報取得系
+    denshi_n = fee_by_code.get("440017770", {}).get("n", 0) + fee_by_code.get("440017870", {}).get("n", 0) + fee_by_code.get("440014570", {}).get("n", 0)
+
+    # 計量混合加算
+    keiryo_san_n, keiryo_san_amt = sum_codes(["430002870"])  # 散剤又は顆粒剤
+    keiryo_eki_n, keiryo_eki_amt = sum_name(["計量混合", "液剤"])
+    keiryo_nan_n, keiryo_nan_amt = sum_codes(["430003670"])  # 軟・硬膏剤
+    yosei_keiryo_nan_n, yosei_keiryo_nan_amt = sum_codes(["430004170"])  # 予製剤 軟・硬膏剤
+
+    # 加算合計 (薬剤調製料以外の加算全部)
+    kasan_total_n, kasan_total_amt = sum_prefix("430")
+    kasan_add_n, kasan_add_amt = sum_prefix("450000")
+    total_kasan_n = kasan_total_n + kasan_add_n
+    total_kasan_amt = kasan_total_amt + kasan_add_amt
+
+    # 薬剤料 内服/外用/屯服/注射 (drugs から計算、円換算で概算)
+    yaku_naifuku = form_map.get("内服", {"n": 0, "amt": 0})
+    yaku_gaiyou = form_map.get("外用", {"n": 0, "amt": 0})
+    yaku_chuusha = form_map.get("注射", {"n": 0, "amt": 0})
+    yaku_tonpuku = {"n": 0, "amt": 0}  # 屯服の識別方法不確定
+    yakuzairyo_total_n = sum(x["n"] for x in [yaku_naifuku, yaku_gaiyou, yaku_chuusha, yaku_tonpuku])
+    yakuzairyo_total_amt = sum(x["amt"] for x in [yaku_naifuku, yaku_gaiyou, yaku_chuusha, yaku_tonpuku])
+
+    # 【薬剤調製料合計】
+    yakuzai_chosei_n = naifuku_n + form_map.get("その他", {}).get("n", 0)
+    yakuzai_chosei_amt = naifuku_amt
+
+    # 服薬管理指導料
+    fukuyaku_kan_3ari_n, fukuyaku_kan_3ari_amt = sum_codes(["440025310", "440012010"])  # 3月内・手帳あり
+    fukuyaku_kan_ika_n, fukuyaku_kan_ika_amt = sum_codes(["440026810"])  # 3月内以外
+    fukuyaku_kan_tenaishi_n, fukuyaku_kan_tenaishi_amt = sum_codes(["440025410", "440012110"])  # 3月内・手帳なし
+    fukuyaku_kan_ka3_n, fukuyaku_kan_ka3_amt = sum_codes(["440025110"])  # かかりつけ・3月内・手帳あり
+    fukuyaku_kan_ka_ika_n, fukuyaku_kan_ka_ika_amt = sum_codes(["440012210", "440025210"])  # かかりつけ・以外
+
+    # 特薬管
+    tokuyaku_1i, tokuyaku_1i_amt = sum_name(["特定薬剤管理指導加算１（イ）"])
+    tokuyaku_1ro, tokuyaku_1ro_amt = sum_name(["特定薬剤管理指導加算１（ロ）"])
+    tokuyaku_2, tokuyaku_2_amt = sum_name(["特定薬剤管理指導加算２"])
+    tokuyaku_3i, tokuyaku_3i_amt = sum_codes(["440020470"])
+    tokuyaku_3ro, tokuyaku_3ro_amt = sum_codes(["440020570"])
+
+    # 乳幼児服薬指導加算
+    nyuuji_n, nyuuji_amt = sum_codes(["440012270"])
+    # 小児特定
+    shouni_tokutei_n, shouni_tokutei_amt = sum_codes(["440012370"])
+
+    # 調剤管理料
+    chouzai_kanri_naifuku_n, chouzai_kanri_naifuku_amt = sum_name(["調剤管理料", "内服"])
+    chouzai_kanri_igai_n, chouzai_kanri_igai_amt = sum_name(["調剤管理料"])
+    chouzai_kanri_igai_n = max(0, chouzai_kanri_igai_n - chouzai_kanri_naifuku_n)
+    chouzai_kanri_igai_amt = max(0, chouzai_kanri_igai_amt - chouzai_kanri_naifuku_amt)
+
+    # 有害事象
+    yugai_n, yugai_amt = sum_codes(["440024370", "440024470", "440024570", "440024670", "440011470", "440011570"])
+
+    # かかりフォロー
+    kakari_follow_n, kakari_follow_amt = sum_codes(["440026370"])
+    kakari_visit_n, kakari_visit_amt = sum_codes(["440026470"])
+
+    # 外来服薬支援料
+    gairai_1_n, gairai_1_amt = sum_codes(["440013510"])
+    gairai_2_n, gairai_2_amt = sum_codes(["440013610", "440013710"])
+
+    # 服薬情報等提供料
+    fukujouhou_1_n, fukujouhou_1_amt = sum_codes(["440009970"])
+    fukujouhou_2i_n, fukujouhou_2i_amt = sum_codes(["440010070"])
+    fukujouhou_2ro_n, fukujouhou_2ro_amt = sum_codes(["440010170"])
+
+    # 在宅 (単一建物1人/2〜9/10人以上)
+    zaitaku_1_n, zaitaku_1_amt = sum_codes(["440005710"])
+    zaitaku_2_n, zaitaku_2_amt = sum_codes(["440005810"])
+    zaitaku_10_n, zaitaku_10_amt = sum_codes(["440005910"])
+
+    # 物価対応料
+    bukka_n, bukka_amt = sum_codes(["470000210"])
+
+    # 薬学管理料 全合計
+    yakugaku_total_n = (fukuyaku_kan_3ari_n + fukuyaku_kan_ika_n + fukuyaku_kan_tenaishi_n
+                       + fukuyaku_kan_ka3_n + fukuyaku_kan_ka_ika_n
+                       + tokuyaku_1i + tokuyaku_1ro + tokuyaku_2 + tokuyaku_3i + tokuyaku_3ro
+                       + nyuuji_n + shouni_tokutei_n
+                       + chouzai_kanri_naifuku_n + chouzai_kanri_igai_n
+                       + kakari_follow_n + kakari_visit_n
+                       + gairai_1_n + gairai_2_n
+                       + fukujouhou_1_n + fukujouhou_2i_n + fukujouhou_2ro_n
+                       + zaitaku_1_n + zaitaku_2_n + zaitaku_10_n + yugai_n)
+    yakugaku_total_amt = (fukuyaku_kan_3ari_amt + fukuyaku_kan_ika_amt + fukuyaku_kan_tenaishi_amt
+                          + fukuyaku_kan_ka3_amt + fukuyaku_kan_ka_ika_amt
+                          + tokuyaku_1i_amt + tokuyaku_1ro_amt + tokuyaku_2_amt + tokuyaku_3i_amt + tokuyaku_3ro_amt
+                          + nyuuji_amt + shouni_tokutei_amt
+                          + chouzai_kanri_naifuku_amt + chouzai_kanri_igai_amt
+                          + kakari_follow_amt + kakari_visit_amt
+                          + gairai_1_amt + gairai_2_amt
+                          + fukujouhou_1_amt + fukujouhou_2i_amt + fukujouhou_2ro_amt
+                          + zaitaku_1_amt + zaitaku_2_amt + zaitaku_10_amt + yugai_amt)
+
+    # Cell producer: 1 側のセル群を返す (label + n + amt + pct)
+    # kind: "sect"(【】), "sub", "row", "total", "blank"
+    def _cells(kind, label, n=0, amt=0):
+        if kind == "blank":
+            return '<td></td><td></td><td></td><td></td>'
+        lbl_cls = "lbl"
+        cls_extra = ""
+        if kind == "sect":
+            lbl_cls = "lbl sect"
+        elif kind == "sub":
+            lbl_cls = "lbl sub"
+        elif kind == "total":
+            lbl_cls = "lbl total"
+        n_str = f"{n:,}" if n else ""
+        amt_str = f"{amt:,}" if amt else ""
+        pct_str = f"{pct(amt):.2f} %" if amt else ""
+        return (
+            f'<td class="{lbl_cls}">{label}</td>'
+            f'<td class="n">{n_str}</td>'
+            f'<td class="amt">{amt_str}</td>'
+            f'<td class="pct">{pct_str}</td>'
+        )
+
+    # Full-row producer: 縦の "調" などの grp ラベルを含む 完全な <tr>
+    def _tr(grp_label, left_cells, right_cells, row_cls="", rowspan=0):
+        # grp_label: 「調」「剤」「技」「術」「料」など 縦書き 1 文字 (最初の行のみ)
+        # rowspan: > 0 の時は最初の行だけ グループラベル出力
+        if grp_label is None:
+            grp_html = ""
+        else:
+            grp_html = f'<td class="grp" rowspan="{rowspan}">{grp_label}</td>' if rowspan else f'<td class="grp">{grp_label}</td>'
+        return f'<tr class="{row_cls}">{grp_html}{left_cells}{grp_html if not rowspan else ""}{right_cells}</tr>'
+
+    # ---- データ構造: (kind, label, n, amt) のタプルリスト ----
+    tech_left = [
+        ("sect", "【調剤基本料】", kihonryo_n, kihonryo_amt),
+        ("sub", "在宅薬学", 0, 0),
+        ("sub", "バイオ後続品", 0, 0),
+        ("sub", "電子的調剤", denshi_n, 0),
+        ("row", "内服", naifuku_n, naifuku_amt),
+        ("row", "浸煎", 0, 0),
+        ("row", "湯", 0, 0),
+        ("row", "内滴", 0, 0),
+        ("row", "麻薬", mayaku_n, mayaku_amt),
+        ("row", "向精神薬", kouseishin_n, kouseishin_amt),
+        ("row", "覚せい剤", kakuseizai_n, kakuseizai_amt),
+        ("row", "毒薬", dokuyaku_n, dokuyaku_amt),
+        ("row", "無菌(中心)", 0, 0),
+        ("row", "無菌(抗悪)", 0, 0),
+        ("row", "無菌(麻薬)", 0, 0),
+        ("row", "無菌(小・中心)", 0, 0),
+        ("row", "無菌(小・抗悪)", 0, 0),
+        ("row", "無菌(小・麻薬)", 0, 0),
+        ("row", "時間外", jikanngai_n, jikanngai_amt),
+        ("row", "深夜", shinya_n, shinya_amt),
+        ("row", "休日", kyujitsu_n, kyujitsu_amt),
+        ("row", "特例", tokurei_n, tokurei_amt),
+        ("row", "夜間休日", yakan_n, yakan_amt),
+        ("row", "自内錠", 0, 0),
+        ("row", "自屯錠", 0, 0),
+    ]
+    tech_right = [
+        ("sect", "【長期分割】", 0, 0),
+        ("sect", "【後発分割】", 0, 0),
+        ("row", "屯服", yaku_tonpuku["n"], 0),
+        ("row", "外用", form_map.get("外用", {}).get("n", 0), 0),
+        ("row", "注射", form_map.get("注射", {}).get("n", 0), 0),
+        ("total", "【薬剤調製料合計】", yakuzai_chosei_n, yakuzai_chosei_amt),
+        ("row", "自内液", 0, 0),
+        ("row", "自外錠", 0, 0),
+        ("row", "自外点", 0, 0),
+        ("row", "自外液", 0, 0),
+        ("row", "計量散", keiryo_san_n, keiryo_san_amt),
+        ("row", "計量液", keiryo_eki_n, keiryo_eki_amt),
+        ("row", "計量軟", keiryo_nan_n, keiryo_nan_amt),
+        ("row", "予内錠", 0, 0),
+        ("row", "予屯錠", 0, 0),
+        ("row", "予内液", 0, 0),
+        ("row", "予外錠", 0, 0),
+        ("row", "予外点", 0, 0),
+        ("row", "予外液", 0, 0),
+        ("row", "予計散", 0, 0),
+        ("row", "予計液", 0, 0),
+        ("row", "予計軟", yosei_keiryo_nan_n, yosei_keiryo_nan_amt),
+        ("total", "【加算合計】", total_kasan_n, total_kasan_amt),
+    ]
+    yakuzai_left_items = [
+        ("row", "内服", yaku_naifuku["n"], yaku_naifuku["amt"]),
+        ("row", "浸煎", 0, 0),
+        ("row", "湯", 0, 0),
+        ("row", "内滴", 0, 0),
+    ]
+    yakuzai_right_items = [
+        ("row", "屯服", yaku_tonpuku["n"], yaku_tonpuku["amt"]),
+        ("row", "外用", yaku_gaiyou["n"], yaku_gaiyou["amt"]),
+        ("row", "注射", yaku_chuusha["n"], yaku_chuusha["amt"]),
+        ("row", "材料", 0, 0),
+    ]
+    misc_left = [
+        ("sect", "【減算】", 0, 0),
+        ("sub", "医師の指示分割", 0, 0),
+        ("sect", "【その他】", 0, 0),
+        ("sub", "ベースアップ評価料", 0, 0),
+    ]
+    misc_right = [
+        ("row", "内服薬7種逓減", 0, 0),
+        ("row", "物価対応料", bukka_n, bukka_amt),
+        ("blank", "", 0, 0),
+        ("blank", "", 0, 0),
+    ]
+    yakugaku_left = [
+        ("row", "調剤管理(内服)", chouzai_kanri_naifuku_n, chouzai_kanri_naifuku_amt),
+        ("row", "調剤管理(以外)", chouzai_kanri_igai_n, chouzai_kanri_igai_amt),
+        ("row", "調剤残薬(在宅)", 0, 0),
+        ("row", "調剤残薬(か薬)", 0, 0),
+        ("row", "調剤残薬(その他)", *sum_codes(["440023570", "440023670", "440023770", "440023870"])),
+        ("row", "有害事象(在宅)", 0, 0),
+        ("row", "有害事象(か薬)", 0, 0),
+        ("row", "有害事象(その他)", yugai_n, yugai_amt),
+        ("row", "服薬管理(か3月)", fukuyaku_kan_ka3_n, fukuyaku_kan_ka3_amt),
+        ("row", "服薬管理(3月有)", fukuyaku_kan_3ari_n, fukuyaku_kan_3ari_amt),
+        ("row", "服薬管理(か以外)", fukuyaku_kan_ka_ika_n, fukuyaku_kan_ka_ika_amt),
+        ("row", "服薬管理(以外)", fukuyaku_kan_ika_n, fukuyaku_kan_ika_amt),
+        ("row", "服薬管理(特養)", 0, 0),
+        ("row", "服薬管理(か手無)", 0, 0),
+        ("row", "服薬管理(手無他)", fukuyaku_kan_tenaishi_n, fukuyaku_kan_tenaishi_amt),
+        ("row", "服薬管理(特例)", 0, 0),
+        ("row", "服薬管理(在宅通)", 0, 0),
+        ("row", "服薬管理(在緊通)", 0, 0),
+        ("row", "麻薬", 0, 0),
+        ("row", "特定薬剤1イ", tokuyaku_1i, tokuyaku_1i_amt),
+        ("row", "特定薬剤1ロ", tokuyaku_1ro, tokuyaku_1ro_amt),
+        ("row", "特定薬剤2", tokuyaku_2, tokuyaku_2_amt),
+        ("row", "特定薬剤3イ", tokuyaku_3i, tokuyaku_3i_amt),
+        ("row", "特定薬剤3ロ", tokuyaku_3ro, tokuyaku_3ro_amt),
+        ("row", "乳幼児服薬", nyuuji_n, nyuuji_amt),
+        ("row", "小児特定", shouni_tokutei_n, shouni_tokutei_amt),
+        ("row", "吸入薬", 0, 0),
+        ("row", "かかりフォロー", kakari_follow_n, kakari_follow_amt),
+        ("row", "かかり訪問", kakari_visit_n, kakari_visit_amt),
+        ("row", "調剤後薬剤", 0, 0),
+        ("row", "服薬情報1", fukujouhou_1_n, fukujouhou_1_amt),
+        ("row", "服薬情報2イ", fukujouhou_2i_n, fukujouhou_2i_amt),
+        ("row", "服薬情報2ロ", fukujouhou_2ro_n, fukujouhou_2ro_amt),
+        ("row", "服薬情報2ハ", 0, 0),
+        ("row", "服薬情報3", 0, 0),
+        ("row", "外来服薬1", gairai_1_n, gairai_1_amt),
+    ]
+    yakugaku_right = [
+        ("row", "外来服薬2", gairai_2_n, gairai_2_amt),
+        ("row", "施設連携", 0, 0),
+        ("row", "経管投薬", 0, 0),
+        ("row", "医師同時", 0, 0),
+        ("row", "複数訪問", 0, 0),
+        ("row", "服用薬剤調整1", 0, 0),
+        ("row", "服用薬剤調整2", 0, 0),
+        ("row", "在宅(1人)", zaitaku_1_n, zaitaku_1_amt),
+        ("row", "在宅(2〜9人)", zaitaku_2_n, zaitaku_2_amt),
+        ("row", "在宅(10人以上)", zaitaku_10_n, zaitaku_10_amt),
+        ("row", "緊急訪問(疾患)", 0, 0),
+        ("row", "緊急訪問(疾患外)", 0, 0),
+        ("row", "緊急共同", 0, 0),
+        ("row", "麻薬(訪)", 0, 0),
+        ("row", "麻薬持続", 0, 0),
+        ("row", "乳幼児加算(訪)", 0, 0),
+        ("row", "小児特定(訪)", 0, 0),
+        ("row", "中心静脈", 0, 0),
+        ("row", "退院共同", 0, 0),
+        ("row", "在宅夜間", 0, 0),
+        ("row", "在宅休日", 0, 0),
+        ("row", "在宅深夜", 0, 0),
+        ("row", "在宅移行", 0, 0),
+        ("row", "居宅(1人)", 0, 0),
+        ("row", "居宅(2〜9人)", 0, 0),
+        ("row", "居宅(10人以上)", 0, 0),
+        ("row", "居宅(通信)", 0, 0),
+        ("row", "予防(1人)", 0, 0),
+        ("row", "予防(2〜9人)", 0, 0),
+        ("row", "予防(10人以上)", 0, 0),
+        ("row", "予防(通信)", 0, 0),
+        ("row", "特別地域・小規模", 0, 0),
+        ("row", "中山間地域", 0, 0),
+        ("row", "居宅麻薬持続", 0, 0),
+        ("row", "居宅中心静脈", 0, 0),
+        ("total", "【薬学管理料合計】", yakugaku_total_n, yakugaku_total_amt),
+    ]
+
+    # ---- 縦書きラベル (グループ) ----
+    def _make_group_labels(rows_count, label_str):
+        """label_str の各文字を rows に均等配置。空文字は空セル。"""
+        result = [""] * rows_count
+        n = len(label_str)
+        if n == 0 or rows_count == 0:
+            return result
+        # 均等配置
+        for i, ch in enumerate(label_str):
+            pos = i * rows_count // n
+            result[pos] = ch
+        return result
+
+    def _combine(left, right, grp1_label, grp2_label):
+        """左右のアイテム配列を結合して <tr> 行に変換。"""
+        rows_count = max(len(left), len(right))
+        # 空セル埋め
+        while len(left) < rows_count:
+            left.append(("blank", "", 0, 0))
+        while len(right) < rows_count:
+            right.append(("blank", "", 0, 0))
+        grp1 = _make_group_labels(rows_count, grp1_label)
+        grp2 = _make_group_labels(rows_count, grp2_label)
+        html = []
+        for i in range(rows_count):
+            g1 = f'<td class="grp">{grp1[i]}</td>' if grp1[i] else '<td class="grp"></td>'
+            g2 = f'<td class="grp">{grp2[i]}</td>' if grp2[i] else '<td class="grp"></td>'
+            lc = _cells(*left[i])
+            rc = _cells(*right[i])
+            row_cls = ""
+            if left[i][0] == "total" or right[i][0] == "total":
+                row_cls = "subtotal"
+            html.append(f'<tr class="{row_cls}">{g1}{lc}{g2}{rc}</tr>')
+        return "".join(html)
+
+    # ---- HTML 生成 ----
+    chotei_tech_rows = _combine(list(tech_left), list(tech_right), "調剤技術料", "調剤技術料")
+    chotei_yakuzai_rows = _combine(list(yakuzai_left_items), list(yakuzai_right_items), "薬剤料", "薬剤料")
+    chotei_misc_rows = _combine(list(misc_left), list(misc_right), "その他", "")
+    chotei_yakugaku_rows = _combine(list(yakugaku_left), list(yakugaku_right), "薬学管理料", "薬学管理料")
+
+    # 薬剤料合計行 (10 セル: grp×2 + 4×2 = 10)
+    chotei_yakuzai_total_row_cells = (
+        f'<td class="grp"></td>'
+        f'<td class="lbl total" colspan="3" style="text-align:right;">【薬剤料合計】</td>'
+        f'<td class="pct"></td>'
+        f'<td class="grp"></td>'
+        f'<td class="lbl total">合　計</td>'
+        f'<td class="n">{yakuzairyo_total_n:,}</td>'
+        f'<td class="amt">{yakuzairyo_total_amt:,}</td>'
+        f'<td class="pct">{pct(yakuzairyo_total_amt):.2f} %</td>'
+    )
+
+    return dict(
+        chotei_tech_rows=chotei_tech_rows,
+        chotei_yakuzai_rows=chotei_yakuzai_rows,
+        chotei_yakuzai_total_row_cells=chotei_yakuzai_total_row_cells,
+        chotei_misc_rows=chotei_misc_rows,
+        chotei_yakugaku_rows=chotei_yakugaku_rows,
+        cr_grand_total=grand_total_yen,
+    )
 
 
 def _daily_report_kwargs(conn, period_where: str, prescription_count: int) -> dict:
@@ -1815,12 +2345,14 @@ def dashboard(
         t_pharmacy_mgmt_other=t_agg["pharmacy_mgmt_other"],
         t_tech_subtotal=(t_agg["dispensing_base"] + t_agg["dispensing_fee_total"] + t_agg["dispensing_add"]),
         t_patient_copay_total=t_agg["patient_copay_total"],
-        senteryoyo_row=(
-            f'<tr class="copay" style="background:#fee2e2;color:#991b1b"><td>うち選定療養費 (長期収載品) <span class="item-code" style="color:#991b1b">{t_agg["senteryoyo_count"]}件</span> <span class="item-code" style="color:#991b1b">税抜{t_agg["senteryoyo_excl_tax"]:,}+税{t_agg["senteryoyo_tax"]:,}</span></td><td class="num">+{t_agg["senteryoyo_total"]:,} 円</td></tr>'
+        senteryoyo_row_simple=(
+            f'<tr style="background:#fee2e2;color:#991b1b;font-weight:600;"><td style="padding:6px 12px;">うち選定療養費 (長期収載品) {t_agg["senteryoyo_count"]}件 税抜{t_agg["senteryoyo_excl_tax"]:,}+税{t_agg["senteryoyo_tax"]:,}</td><td style="padding:6px 12px;text-align:right;">+{t_agg["senteryoyo_total"]:,} 円</td></tr>'
             if t_agg["senteryoyo_total"] > 0 else ""
         ),
         # ---- 業務日報 合計欄 (期間に応じた集計を円換算) ----
         **_daily_report_kwargs(conn, period_where, prescription_count),
+        # ---- 詳細調剤報酬明細帳票 (Image 16/17 準拠) ----
+        **_detailed_chotei_kwargs(conn, period_where),
         recent_rows=recent_rows_html,
         now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
