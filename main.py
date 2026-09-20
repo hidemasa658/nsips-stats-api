@@ -595,27 +595,13 @@ document.addEventListener('DOMContentLoaded', function() {{
   <div class="kpi"><div class="val">{dp_short_count:,}</div><div class="lbl">短期処方 27日以下 (10点/剤)</div></div>
 </div>
 
-<h2>期間別 集計</h2>
-<div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-  <div>
-    <h3 style="font-size:14px;color:#475569;margin:8px 0;">日別 (当月分)</h3>
-    <table style="font-size:12px;">
-      <thead><tr><th>日付</th><th class="num">件数 (件)</th><th class="num">点数 (点)</th><th class="num">負担金 (円)</th></tr></thead>
-      <tbody>
-      {daily_rows}
-      </tbody>
-    </table>
-  </div>
-  <div>
-    <h3 style="font-size:14px;color:#475569;margin:8px 0;">月別</h3>
-    <table style="font-size:12px;">
-      <thead><tr><th>月</th><th class="num">件数 (件)</th><th class="num">点数 (点)</th><th class="num">負担金 (円)</th></tr></thead>
-      <tbody>
-      {monthly_rows}
-      </tbody>
-    </table>
-  </div>
-</div>
+<h2>日別集計 (当月分)</h2>
+<table style="font-size:12px;max-width:640px;">
+  <thead><tr><th>日付</th><th class="num">件数 (件)</th><th class="num">点数 (点)</th><th class="num">負担金 (円)</th></tr></thead>
+  <tbody>
+  {daily_rows}
+  </tbody>
+</table>
 
 <h2>薬剤別累計 (調剤回数上位 50 品目)</h2>
 <style>
@@ -1163,24 +1149,6 @@ def dashboard(
         f'<td class="num">{r["pts"]:,} 点</td>'
         f'<td class="num">{r["cp"]:,} 円</td></tr>'
         for r in daily_data
-    ) or '<tr><td colspan="4">(データなし)</td></tr>'
-
-    # 月別集計 (全期間、dispense_date 優先)
-    monthly_data = conn.execute(
-        """SELECT COALESCE(SUBSTR(dispense_date, 1, 6), SUBSTR(REPLACE(detected_at,'-',''), 1, 6)) AS m,
-                  COUNT(*) AS n,
-                  COALESCE(SUM(total_points), 0) AS pts,
-                  COALESCE(SUM(patient_copay), 0) AS cp
-           FROM prescriptions
-           GROUP BY m
-           ORDER BY m DESC"""
-    ).fetchall()
-    monthly_rows_html = "\n".join(
-        f'<tr><td>{_h(r["m"])}</td>'
-        f'<td class="num">{r["n"]:,} 件</td>'
-        f'<td class="num">{r["pts"]:,} 点</td>'
-        f'<td class="num">{r["cp"]:,} 円</td></tr>'
-        for r in monthly_data
     ) or '<tr><td colspan="4">(データなし)</td></tr>'
 
     # record 5 全体集計の累計 (経営指標、期間フィルタ適用)
@@ -1813,7 +1781,6 @@ def dashboard(
         form_injection=form_injection,
         form_other=form_other,
         daily_rows=daily_rows_html,
-        monthly_rows=monthly_rows_html,
         ingredient_rows=ingredient_rows_html,
         main_count=main_agg["n"],
         main_points=main_agg["pts"],
