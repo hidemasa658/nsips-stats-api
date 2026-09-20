@@ -384,14 +384,31 @@ tr:hover {{ background: #f9f9f9; }}
 .receipt .copay td {{ padding: 8px 12px; color: #78350f; }}
 .receipt .copay .num {{ font-size: 16px; color: #78350f; }}
 
-/* コンパクト stats grid (旧KPIカードのタイト版) */
-.stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 20px; margin: 8px 0 16px; font-size: 12px; border: 1px solid #e5e7eb; border-radius: 4px; padding: 6px 8px; background: #fafafa; }}
-.stats-grid .r {{ display: flex; justify-content: space-between; align-items: baseline; padding: 3px 4px; border-bottom: 1px dotted #e5e7eb; }}
-.stats-grid .r:last-child {{ border-bottom: none; }}
-.stats-grid .l {{ color: #64748b; font-size: 11px; }}
-.stats-grid .v {{ font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; font-size: 13px; }}
-.stats-grid .v.accent {{ color: #059669; }}
-.stats-grid-title {{ font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 12px 0 2px; padding-left: 4px; }}
+/* 薬局業務日報 合計欄スタイル */
+.report-daily {{
+  font-family: "SFMono-Regular", "Yu Gothic Mono", Menlo, Consolas, monospace;
+  font-size: 13px; color: #0f172a;
+  border: 1px solid #cbd5e1; padding: 10px 12px; margin: 10px 0 18px;
+  background: #fff; display: flex; gap: 30px; flex-wrap: wrap;
+}}
+.report-daily .rd-left {{ min-width: 200px; }}
+.report-daily .rd-right {{ flex: 1; min-width: 400px; }}
+.report-daily .rd-row {{ display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0; }}
+.report-daily .rd-row .rd-l {{ color: #334155; }}
+.report-daily .rd-row .rd-v {{ font-variant-numeric: tabular-nums; text-align: right; padding-left: 12px; }}
+.report-daily .rd-row .rd-u {{ color: #64748b; font-size: 12px; margin-left: 4px; min-width: 20px; display: inline-block; }}
+.report-daily table.rd-t {{ border-collapse: collapse; width: 100%; font-family: inherit; font-size: 13px; }}
+.report-daily table.rd-t th {{
+  background: transparent; text-align: right; padding: 3px 12px;
+  color: #64748b; font-weight: 500; font-size: 12px; border-bottom: 1px solid #cbd5e1;
+}}
+.report-daily table.rd-t th:first-child {{ text-align: left; }}
+.report-daily table.rd-t th.center {{ text-align: center; padding: 3px 18px; }}
+.report-daily table.rd-t td {{ padding: 2px 12px; }}
+.report-daily table.rd-t td.lbl {{ text-align: left; color: #334155; }}
+.report-daily table.rd-t td.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+.report-daily table.rd-t td.num .u {{ color: #64748b; font-size: 12px; margin-left: 2px; }}
+.report-daily .rd-title {{ font-size: 11px; color: #64748b; margin: 0 0 6px; letter-spacing: 0.05em; }}
 
 /* 混合処方 週次トレンド */
 .mix-summary {{ display: flex; gap: 12px; margin: 12px 0; flex-wrap: wrap; }}
@@ -483,25 +500,54 @@ document.addEventListener('DOMContentLoaded', function() {{
 }});
 </script>
 
-<div class="stats-grid-title">{main_label} / {cmp_label} (調剤日ベース)</div>
-<div class="stats-grid">
-  <div class="r"><span class="l">{main_label} 処方件数</span><span class="v accent">{main_count:,}</span></div>
-  <div class="r"><span class="l">{main_label} 請求点数</span><span class="v accent">{main_points:,}</span></div>
-  <div class="r"><span class="l">{main_label} 患者負担金</span><span class="v accent">{main_copay:,} 円</span></div>
-  <div class="r"><span class="l">{cmp_label} 処方件数</span><span class="v">{cmp_count:,}</span></div>
-  <div class="r"><span class="l">{cmp_label} 請求点数</span><span class="v">{cmp_points:,}</span></div>
-  <div class="r"><span class="l">{cmp_label} 患者負担金</span><span class="v">{cmp_copay:,} 円</span></div>
-</div>
-
-<div class="stats-grid-title">基本 (全期間)</div>
-<div class="stats-grid">
-  <div class="r"><span class="l">総処方受入件数</span><span class="v">{prescription_count:,}</span></div>
-  <div class="r"><span class="l">薬品種類</span><span class="v">{drug_kinds:,}</span></div>
-  <div class="r"><span class="l">内用 (回数)</span><span class="v">{form_internal:,}</span></div>
-  <div class="r"><span class="l">外用 (回数)</span><span class="v">{form_external:,}</span></div>
-  <div class="r"><span class="l">注射 (回数)</span><span class="v">{form_injection:,}</span></div>
-  <div class="r"><span class="l">その他 (回数)</span><span class="v">{form_other:,}</span></div>
-  <div class="r"><span class="l">計量混合加算 件数</span><span class="v">{mix_total:,}</span></div>
+<p class="rd-title">薬局業務日報 合計 ({period_label})</p>
+<div class="report-daily">
+  <div class="rd-left">
+    <div class="rd-row"><span class="rd-l">レセプト件数</span><span class="rd-v">{rd_recept:,}<span class="rd-u">件</span></span></div>
+    <div class="rd-row"><span class="rd-l">受付回数</span><span class="rd-v">{rd_uketsuke:,}<span class="rd-u">回</span></span></div>
+    <div class="rd-row"><span class="rd-l">処方せん枚数</span><span class="rd-v">{rd_shohousen:,}<span class="rd-u">枚</span></span></div>
+    <div class="rd-row"><span class="rd-l">患者数</span><span class="rd-v">{rd_patients}<span class="rd-u">人</span></span></div>
+    <div class="rd-row"><span class="rd-l">新患数</span><span class="rd-v">{rd_new_patients}<span class="rd-u">人</span></span></div>
+    <div class="rd-row"><span class="rd-l">受付回数 (ハイリスク)</span><span class="rd-v">{rd_hirisk:,}<span class="rd-u">回</span></span></div>
+  </div>
+  <div class="rd-right">
+    <table class="rd-t">
+      <thead>
+        <tr>
+          <th></th>
+          <th class="center">合　計</th>
+          <th class="center">処方せん1枚当</th>
+          <th class="center">受付1回当</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="lbl">調剤報酬金額</td>
+          <td class="num">{rd_total_yen:,}<span class="u">円</span></td>
+          <td class="num">{rd_per_sheet_total:,}<span class="u">円</span></td>
+          <td class="num">{rd_per_uke_total:,}<span class="u">円</span></td></tr>
+        <tr><td class="lbl">保険内請求金額</td>
+          <td class="num">{rd_hoken_yen:,}<span class="u">円</span></td>
+          <td class="num">{rd_per_sheet_hoken:,}<span class="u">円</span></td>
+          <td class="num">{rd_per_uke_hoken:,}<span class="u">円</span></td></tr>
+        <tr><td class="lbl">保険外請求金額</td>
+          <td class="num">{rd_gaihoken_yen:,}<span class="u">円</span></td>
+          <td class="num">{rd_per_sheet_gaihoken:,}<span class="u">円</span></td>
+          <td class="num">{rd_per_uke_gaihoken:,}<span class="u">円</span></td></tr>
+        <tr><td class="lbl">外税</td>
+          <td class="num">{rd_zei_yen:,}<span class="u">円</span></td>
+          <td class="num">{rd_per_sheet_zei:,}<span class="u">円</span></td>
+          <td class="num">{rd_per_uke_zei:,}<span class="u">円</span></td></tr>
+        <tr><td class="lbl">入金額</td>
+          <td class="num">{rd_nyukin_yen:,}<span class="u">円</span></td>
+          <td class="num">{rd_per_sheet_nyukin:,}<span class="u">円</span></td>
+          <td class="num">{rd_per_uke_nyukin:,}<span class="u">円</span></td></tr>
+        <tr><td class="lbl">振込参考金額</td>
+          <td class="num">{rd_furikomi_yen:,}<span class="u">円</span></td>
+          <td class="num"></td>
+          <td class="num"></td></tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <div class="kpi-section-title">調剤報酬明細 ({main_label} 累計)</div>
@@ -714,6 +760,77 @@ document.addEventListener('DOMContentLoaded', function() {{
 
 def _h(v) -> str:
     return html_lib.escape(str(v) if v is not None else "")
+
+
+def _daily_report_kwargs(conn, period_where: str, prescription_count: int) -> dict:
+    """薬局業務日報 合計欄 用の値を計算 (円換算)。"""
+    if prescription_count <= 0:
+        z = 0
+        return dict(
+            rd_recept=0, rd_uketsuke=0, rd_shohousen=0,
+            rd_patients="—", rd_new_patients="—", rd_hirisk=0,
+            rd_total_yen=z, rd_hoken_yen=z, rd_gaihoken_yen=z,
+            rd_zei_yen=z, rd_nyukin_yen=z, rd_furikomi_yen=z,
+            rd_per_sheet_total=z, rd_per_sheet_hoken=z, rd_per_sheet_gaihoken=z,
+            rd_per_sheet_zei=z, rd_per_sheet_nyukin=z,
+            rd_per_uke_total=z, rd_per_uke_hoken=z, rd_per_uke_gaihoken=z,
+            rd_per_uke_zei=z, rd_per_uke_nyukin=z,
+        )
+
+    # 期間内の総計 (円換算)
+    row = conn.execute(
+        f"""SELECT COALESCE(SUM(total_points), 0) AS tp,
+                    COALESCE(SUM(patient_copay), 0) AS copay,
+                    COALESCE(SUM(senteryoyo_fee_excl_tax), 0) AS sy_excl,
+                    COALESCE(SUM(senteryoyo_tax), 0) AS sy_tax,
+                    COALESCE(SUM(patient_copay_total), 0) AS copay_total
+             FROM prescriptions WHERE {period_where}"""
+    ).fetchone()
+    total_yen = (row["tp"] or 0) * 10  # 点数 → 円 (1点=10円)
+    copay = row["copay"] or 0
+    sy_excl = row["sy_excl"] or 0
+    sy_tax = row["sy_tax"] or 0
+    copay_total = row["copay_total"] or 0
+    hoken_yen = total_yen - copay  # 保険内請求額 = 総額 - 患者負担
+    gaihoken_yen = sy_excl  # 保険外請求 = 選定療養費 税抜
+    zei_yen = sy_tax        # 外税 = 選定療養費 消費税
+    nyukin_yen = copay_total  # 入金額 = 総患者負担 (保険内 + 選定療養)
+    furikomi_yen = hoken_yen  # 振込参考金額 = 保険内請求 (簡易)
+
+    # ハイリスク受付回数 (特薬管加算3 = 440020570)
+    hirisk = conn.execute(
+        f"""SELECT COALESCE(SUM(f.count), 0) AS n
+             FROM fees f JOIN prescriptions p ON f.prescription_id = p.id
+             WHERE f.code = '440020570' AND {period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')}"""
+    ).fetchone()["n"] or 0
+
+    def per(v):
+        return int(v // prescription_count) if prescription_count else 0
+
+    return dict(
+        rd_recept=prescription_count,
+        rd_uketsuke=prescription_count,
+        rd_shohousen=prescription_count,
+        rd_patients="—",  # 患者PII未保存
+        rd_new_patients="—",
+        rd_hirisk=hirisk,
+        rd_total_yen=total_yen,
+        rd_hoken_yen=hoken_yen,
+        rd_gaihoken_yen=gaihoken_yen,
+        rd_zei_yen=zei_yen,
+        rd_nyukin_yen=nyukin_yen,
+        rd_furikomi_yen=furikomi_yen,
+        rd_per_sheet_total=per(total_yen),
+        rd_per_sheet_hoken=per(hoken_yen),
+        rd_per_sheet_gaihoken=per(gaihoken_yen),
+        rd_per_sheet_zei=per(zei_yen),
+        rd_per_sheet_nyukin=per(nyukin_yen),
+        rd_per_uke_total=per(total_yen),
+        rd_per_uke_hoken=per(hoken_yen),
+        rd_per_uke_gaihoken=per(gaihoken_yen),
+        rd_per_uke_zei=per(zei_yen),
+        rd_per_uke_nyukin=per(nyukin_yen),
+    )
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -1733,6 +1850,8 @@ def dashboard(
             f'<tr class="copay" style="background:#fee2e2;color:#991b1b"><td>うち選定療養費 (長期収載品) <span class="item-code" style="color:#991b1b">{t_agg["senteryoyo_count"]}件</span> <span class="item-code" style="color:#991b1b">税抜{t_agg["senteryoyo_excl_tax"]:,}+税{t_agg["senteryoyo_tax"]:,}</span></td><td class="num">+{t_agg["senteryoyo_total"]:,} 円</td></tr>'
             if t_agg["senteryoyo_total"] > 0 else ""
         ),
+        # ---- 業務日報 合計欄 (期間に応じた集計を円換算) ----
+        **_daily_report_kwargs(conn, period_where, prescription_count),
         recent_rows=recent_rows_html,
         now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
