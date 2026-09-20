@@ -592,8 +592,6 @@ document.addEventListener('DOMContentLoaded', function() {{
 <thead>
   <tr>
     <th rowspan="2">組合せ</th>
-    <th rowspan="2" class="num">累計<br>件数</th>
-    <th rowspan="2" class="num">累計<br>量</th>
     <th colspan="2" class="num" style="background:#f0fdf4;">📅 今月 / 前年同月</th>
     <th colspan="2" class="num" style="background:#eff6ff;">📅 今週 / 前年同週</th>
     <th rowspan="2" class="num" style="background:#f5f3ff;">月平均<br>(今年度)</th>
@@ -1282,8 +1280,6 @@ def dashboard(
         return (
             f'<tr>'
             f'<td style="font-size:12px;">{_h(combo)}</td>'
-            f'<td class="num">{s["total_n"]:,}</td>'
-            f'<td class="num" style="color:#334155">{_fmt_qty(s["total_qty"], unit)}</td>'
             + _fmt_period_cell(cm, pm, unit, "#f0fdf4", "#fef3c7")  # 今月/前年同月
             + _fmt_period_cell(cw, pw, unit, "#eff6ff", "#fef3c7")  # 今週/前年同週
             + f'<td class="num" style="background:#f5f3ff"><strong>{_fmt_qty(monthly_avg_qty, unit)}</strong></td>'
@@ -1291,7 +1287,7 @@ def dashboard(
             f'<td>{qty_dist}</td>'
             f'</tr>'
         )
-    planning_rows_html = "\n".join(_planning_row(c, s) for c, s in planning_sorted) or '<tr><td colspan="11">(データなし)</td></tr>'
+    planning_rows_html = "\n".join(_planning_row(c, s) for c, s in planning_sorted) or '<tr><td colspan="9">(データなし)</td></tr>'
 
     planning_report_html = (
         f'<div style="background:#f8fafc;padding:10px 14px;border-radius:6px;margin:12px 0;font-size:12px;color:#475569;">'
