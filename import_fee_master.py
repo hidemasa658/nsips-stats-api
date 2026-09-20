@@ -37,8 +37,16 @@ def import_master(csv_path: Path, db_path: Path) -> int:
     conn.row_factory = sqlite3.Row
     init_db(conn)
 
+    # 厚労省マスタ CSV は Shift-JIS (cp932) が標準。UTF-8 も後方互換で試行
+    try:
+        with csv_path.open("r", encoding="cp932") as _test:
+            _test.read(1024)
+        encoding = "cp932"
+    except UnicodeDecodeError:
+        encoding = "utf-8"
+
     inserted = 0
-    with csv_path.open("r", encoding="utf-8") as f:
+    with csv_path.open("r", encoding=encoding) as f:
         reader = csv.reader(f)
         for row in reader:
             if len(row) < 12:
