@@ -652,7 +652,13 @@ document.addEventListener('DOMContentLoaded', function() {{
 </table>
 </details>
 
-<h2>各種加算・料金 累計</h2>
+<h2>地域支援体制加算 実績 月別推移 <span style="font-size:13px;color:#64748b;font-weight:normal;">(全期間)</span></h2>
+<p style="color:#64748b;font-size:12px;margin-bottom:12px;">施設基準に係る主要加算の月別算定回数。右端の数値 = 最新月の値。</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:10px;margin-bottom:24px;">
+{chiiki_charts}
+</div>
+
+<h2>各種加算・料金 累計 <span style="font-size:13px;color:#64748b;font-weight:normal;">({period_label})</span></h2>
 <table>
 <thead><tr><th>種別</th><th>加算コード</th><th>加算名</th><th class="num">算定回数</th><th class="num">合計点数</th></tr></thead>
 <tbody>
@@ -1491,8 +1497,10 @@ def dashboard(
     ) or '<tr><td colspan="2">(該当なし)</td></tr>'
 
     # 加算・料金 累計 (fee_master と JOIN、マスタ名/点数優先)
+    # タブ (period_where) に連動: prescriptions 経由で期間フィルタ
+    _fee_where = period_where.replace('dispense_date', 'p.dispense_date').replace('detected_at', 'p.detected_at')
     fee_data = conn.execute(
-        """SELECT
+        f"""SELECT
              f.fee_type,
              f.code,
              COALESCE(m.name, f.name) AS display_name,
@@ -1500,9 +1508,11 @@ def dashboard(
              SUM(COALESCE(f.count, 1)) AS total_count,
              SUM(COALESCE(f.count, 1) * COALESCE(m.points, f.points, 0)) AS total_points
            FROM fees f
+           JOIN prescriptions p ON f.prescription_id = p.id
            LEFT JOIN fee_master m ON f.code = m.code
            WHERE f.code IS NOT NULL
-             AND (LENGTH(f.code) >= 5 OR m.code IS NOT NULL)  -- 実加算コードは通常 9 桁、防御的フィルタ
+             AND (LENGTH(f.code) >= 5 OR m.code IS NOT NULL)
+             AND {_fee_where}
            GROUP BY f.fee_type, f.code, display_name, master_points
            ORDER BY total_count DESC, total_points DESC"""
     ).fetchall()
@@ -1516,6 +1526,83 @@ def dashboard(
             f'<td class="num">{r["total_points"] or 0}</td></tr>'
         )
     fee_rows_html = "\n".join(_fee_row(r) for r in fee_data) or '<tr><td colspan="5">(データなし)</td></tr>'
+
+    # ---- 地域支援体制加算 実績 月別推移 (折れ線グラフ) ----
+    # 8 カテゴリの name パターンで matching → 月別 SUM(count)
+    CHIIKI_CATEGORIES = [
+        ("夜間・休日等の対応実績", "#dc2626", ["夜間", "休日", "時間外"]),
+        ("麻薬の調剤実績", "#7c3aed", ["麻薬"]),
+        ("残薬調整・薬学的有害事象防止", "#059669", ["残薬", "薬学的有害", "重複投薬", "相互作用"]),
+        ("かかりつけ薬剤師", "#0891b2", ["かかりつけ"]),
+        ("外来服薬支援料", "#ea580c", ["外来服薬支援"]),
+        ("在宅薬剤管理", "#65a30d", ["在宅患者訪問", "在宅患者緊急", "居宅療養管理", "介護予防居宅"]),
+        ("服薬情報等提供料", "#c026d3", ["服薬情報等提供"]),
+        ("小児特定加算", "#f59e0b", ["小児特定"]),
+    ]
+    def _chiiki_data(patterns: list) -> list:
+        """パターンに合致する加算の月別合計 count を [(ym, n), ...] で返す。"""
+        conds = " OR ".join(f"COALESCE(m.name, f.name) LIKE '%{p}%'" for p in patterns)
+        rows = conn.execute(
+            f"""SELECT SUBSTR(p.dispense_date, 1, 6) AS ym, SUM(COALESCE(f.count, 1)) AS n
+                FROM fees f
+                JOIN prescriptions p ON f.prescription_id = p.id
+                LEFT JOIN fee_master m ON f.code = m.code
+                WHERE p.dispense_date IS NOT NULL
+                  AND ({conds})
+                GROUP BY ym ORDER BY ym"""
+        ).fetchall()
+        return [(r["ym"], r["n"]) for r in rows if r["ym"]]
+
+    def _svg_line(data, color, label):
+        """小型 折れ線グラフを SVG 文字列で返す。data=[(ym,n),...]"""
+        if not data:
+            return f'<div style="padding:20px;color:#94a3b8;font-size:12px;text-align:center;">データなし</div>'
+        w, h = 320, 100
+        pad_l, pad_r, pad_t, pad_b = 40, 8, 12, 24
+        chart_w = w - pad_l - pad_r
+        chart_h = h - pad_t - pad_b
+        max_n = max(n for _, n in data) or 1
+        n_pts = len(data)
+        # 座標変換
+        def x(i): return pad_l + (i * chart_w / max(1, n_pts - 1))
+        def y(n): return pad_t + chart_h - (n / max_n) * chart_h
+        # 経路 + ポイント
+        pts = " ".join(f"{x(i):.1f},{y(n):.1f}" for i, (_, n) in enumerate(data))
+        # Y 軸 4 刻み
+        y_labels = ""
+        for i in range(4):
+            yy = pad_t + chart_h - (chart_h * i / 3)
+            val = int(max_n * i / 3)
+            y_labels += f'<line x1="{pad_l}" y1="{yy:.1f}" x2="{w-pad_r}" y2="{yy:.1f}" stroke="#f1f5f9" stroke-width="1"/>'
+            y_labels += f'<text x="{pad_l-4}" y="{yy+3:.1f}" style="font-size:9px;fill:#94a3b8;text-anchor:end;">{val}</text>'
+        # X ラベル (最初・中間・最後 だけ)
+        x_labels = ""
+        idxs = [0, n_pts // 2, n_pts - 1] if n_pts >= 3 else list(range(n_pts))
+        for i in idxs:
+            ym = data[i][0]
+            lbl = f"{ym[2:4]}/{ym[4:6]}" if len(ym) >= 6 else ym
+            x_labels += f'<text x="{x(i):.1f}" y="{h-6}" style="font-size:9px;fill:#64748b;text-anchor:middle;">{lbl}</text>'
+        # ポイント (最終値 だけ 値表示)
+        last_n = data[-1][1]
+        latest_dot = f'<circle cx="{x(n_pts-1):.1f}" cy="{y(last_n):.1f}" r="3" fill="{color}"/>'
+        latest_val = f'<text x="{x(n_pts-1):.1f}" y="{y(last_n)-6:.1f}" style="font-size:10px;font-weight:600;fill:{color};text-anchor:middle;">{last_n}</text>'
+        return (
+            f'<div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;">'
+            f'<div style="font-size:11px;font-weight:600;color:#334155;margin-bottom:2px;padding-left:4px;">{label}</div>'
+            f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
+            f'{y_labels}'
+            f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="2" stroke-linejoin="round"/>'
+            f'{latest_dot}{latest_val}'
+            f'{x_labels}'
+            f'</svg>'
+            f'</div>'
+        )
+
+    chiiki_charts = []
+    for label, color, patterns in CHIIKI_CATEGORIES:
+        data = _chiiki_data(patterns)
+        chiiki_charts.append(_svg_line(data, color, label))
+    chiiki_charts_html = "".join(chiiki_charts)
 
     # 最新受入 生データ 20 件
     recent_data = conn.execute(
@@ -1538,6 +1625,7 @@ def dashboard(
         drug_kinds=drug_kinds,
         drug_rows=drug_rows_html,
         fee_rows=fee_rows_html,
+        chiiki_charts=chiiki_charts_html,
         mix_total=mix_total,
         mix_total_all=mix_total_all,
         mix_weekly_avg=mix_weekly_avg,
