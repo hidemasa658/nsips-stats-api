@@ -1371,7 +1371,8 @@ def dashboard(
     row_state = conn.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM prescriptions").fetchone()
     cache_key = (period or "all", row_state[0], row_state[1])
     cached = _DASHBOARD_CACHE.get(cache_key)
-    if cached and (_time_mod.time() - cached[0]) < 60:
+    # データ変化 (row_state) で invalidate されるので TTL は長めで OK
+    if cached and (_time_mod.time() - cached[0]) < 1800:  # 30分
         return HTMLResponse(content=cached[1])
 
     # ---- 期間フィルタ ----
@@ -1961,6 +1962,7 @@ def dashboard(
     weekly_drilldown_rows = "\n".join(_weekly_row(c, s) for c, s in top10_combos_wk) or f'<tr><td colspan="9">(データなし)</td></tr>'
 
     # ---- 月別ヒートマップ: combo × month の件数 ----
+    # ym キー形式は combo_summary.monthly / monthly_qty_hist と一致させる ("YYYY-MM")
     monthly_combo_map: dict = _dd(lambda: _dd(lambda: {"n": 0, "qty": 0.0}))
     all_months: set = set()
     for r in combos_data:
@@ -1970,7 +1972,7 @@ def dashboard(
         dd_ = r["dispense_date"]
         if not dd_ or len(dd_) < 6:
             continue
-        ym = dd_[:6]
+        ym = f"{dd_[:4]}-{dd_[4:6]}"  # "2026-01" 形式に統一
         all_months.add(ym)
         monthly_combo_map[c][ym]["n"] += n
         monthly_combo_map[c][ym]["qty"] += qty
@@ -2022,7 +2024,7 @@ def dashboard(
         total_disp = f"{s['total_qty']/1000:.1f}k{unit}" if s["total_qty"] >= 1000 else f"{s['total_qty']:.0f}{unit}"
         return f'<tr><td class="hm-label">{_h(combo_short)}</td>{"".join(cells)}<td class="num" style="background:#f8fafc;font-weight:600">{total_disp}</td></tr>'
 
-    month_header_html = "".join(f'<th class="hm-month">{m[:4]}<br>/{m[4:6]}</th>' for m in sorted_months)
+    month_header_html = "".join(f'<th class="hm-month">{m[:4]}<br>/{m[5:7]}</th>' for m in sorted_months)
     heatmap_rows_html = "\n".join(_heat_row(c, s) for c, s in heatmap_combos) or f'<tr><td colspan="{len(sorted_months)+2}">(データなし)</td></tr>'
 
     mix_total = conn.execute(
