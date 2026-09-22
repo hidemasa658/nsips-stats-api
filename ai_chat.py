@@ -11,6 +11,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from datetime import date as _date_type
+
 import anthropic
 from dotenv import load_dotenv
 
@@ -143,6 +145,17 @@ def ask(question: str, db_path: Path, history: list | None = None) -> dict:
     if not api_key:
         return {"error": "ANTHROPIC_API_KEY 未設定"}
 
+    # 今日の日付をシステムに追加 (質問の "今月" 等を解釈)
+    today = _date_type.today()
+    system_full = _SYSTEM_PROMPT + f"""
+
+## 現在時刻
+- 今日: {today.isoformat()} (YYYYMMDD 形式: {today.strftime('%Y%m%d')})
+- 今月: {today.strftime('%Y%m')} (SUBSTR フィルタ用)
+- 先月: {(today.replace(day=1) - __import__('datetime').timedelta(days=1)).strftime('%Y%m')}
+- 「今月」「今日」「先月」等はこの日付を基準に解釈してください。ユーザに再確認は不要。
+"""
+
     client = anthropic.Anthropic(api_key=api_key)
     messages: list[dict[str, Any]] = list(history or [])
     messages.append({"role": "user", "content": question})
@@ -155,7 +168,7 @@ def ask(question: str, db_path: Path, history: list | None = None) -> dict:
         response = client.messages.create(
             model=_MODEL,
             max_tokens=2048,
-            system=_SYSTEM_PROMPT,
+            system=system_full,
             tools=_TOOLS,
             messages=messages,
         )
