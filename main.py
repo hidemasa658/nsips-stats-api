@@ -53,6 +53,32 @@ def health(_: None = Depends(verify_token)) -> dict:
     return {"status": "ok"}
 
 
+# ---- AI チャット endpoint (Claude Haiku 4.5 + Tool-use) ----
+from pydantic import BaseModel as _BaseModel
+
+
+class _AskRequest(_BaseModel):
+    question: str
+    history: list = []
+
+
+@app.post("/api/ask")
+def api_ask(
+    payload: _AskRequest,
+    x_api_token: str | None = Header(default=None),
+    token: str | None = Query(default=None),
+) -> dict:
+    provided = x_api_token or token
+    if not API_TOKEN or provided != API_TOKEN:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
+    try:
+        from ai_chat import ask
+        result = ask(payload.question, Path(DB_PATH), payload.history)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
 from models import IngestPayload, IngestResponse  # noqa: E402
 
 
@@ -826,6 +852,149 @@ document.addEventListener('DOMContentLoaded', function() {{
     <button class="mix-detail-close" onclick="closeMixDetail()">閉じる</button>
   </div>
 </div>
+
+<!-- AI チャットウィジェット -->
+<style>
+#ai-chat-fab {{
+  position: fixed; bottom: 20px; right: 20px; z-index: 900;
+  width: 56px; height: 56px; border-radius: 50%; background: #7c3aed;
+  color: #fff; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  font-size: 24px; display: flex; align-items: center; justify-content: center;
+}}
+#ai-chat-fab:hover {{ background: #6d28d9; }}
+#ai-chat-panel {{
+  display: none; position: fixed; bottom: 90px; right: 20px; z-index: 901;
+  width: 420px; max-width: 92vw; height: 600px; max-height: 80vh;
+  background: #fff; border: 1px solid #cbd5e1; border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25); flex-direction: column; overflow: hidden;
+}}
+#ai-chat-panel.open {{ display: flex; }}
+.ai-header {{
+  background: #7c3aed; color: #fff; padding: 10px 14px;
+  font-weight: 600; font-size: 14px; display: flex; justify-content: space-between;
+}}
+.ai-header .close {{ cursor: pointer; background: none; border: none; color: #fff; font-size: 18px; }}
+#ai-messages {{
+  flex: 1; overflow-y: auto; padding: 12px; background: #f8fafc;
+  font-size: 13px; line-height: 1.5;
+}}
+.ai-msg {{ margin-bottom: 10px; padding: 8px 12px; border-radius: 10px; max-width: 90%; }}
+.ai-msg.user {{ background: #ddd6fe; color: #4c1d95; margin-left: auto; }}
+.ai-msg.assistant {{ background: #fff; color: #0f172a; border: 1px solid #e5e7eb; white-space: pre-wrap; }}
+.ai-msg.thinking {{ color: #64748b; font-style: italic; }}
+.ai-msg .tool-info {{
+  font-size: 10px; color: #64748b; margin-top: 6px; padding-top: 6px;
+  border-top: 1px dashed #cbd5e1; font-family: monospace;
+}}
+#ai-input-row {{
+  display: flex; gap: 6px; padding: 10px; border-top: 1px solid #e5e7eb; background: #fff;
+}}
+#ai-input {{
+  flex: 1; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px;
+  font-size: 13px; font-family: inherit;
+}}
+#ai-send {{
+  padding: 8px 14px; background: #7c3aed; color: #fff; border: none;
+  border-radius: 8px; cursor: pointer; font-weight: 500;
+}}
+#ai-send:disabled {{ background: #94a3b8; cursor: not-allowed; }}
+.ai-suggestions {{ display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; background: #f1f5f9; border-top: 1px solid #e5e7eb; }}
+.ai-suggestions button {{
+  background: #fff; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 12px;
+  font-size: 11px; cursor: pointer; color: #475569;
+}}
+.ai-suggestions button:hover {{ background: #ddd6fe; border-color: #7c3aed; }}
+</style>
+
+<button id="ai-chat-fab" onclick="toggleAiChat()" title="AI に質問">💬</button>
+
+<div id="ai-chat-panel">
+  <div class="ai-header">
+    <span>💊 データについて質問</span>
+    <button class="close" onclick="toggleAiChat()">×</button>
+  </div>
+  <div id="ai-messages">
+    <div class="ai-msg assistant">
+      薬局データについて何でも聞いてください。<br>
+      例: 「今月と先月の請求点数比較して」「セチリジン塩酸塩は何件出た?」
+    </div>
+  </div>
+  <div class="ai-suggestions" id="ai-suggestions">
+    <button onclick="askExample('今月の請求点数と患者負担金は?')">今月の売上</button>
+    <button onclick="askExample('先月と今月で最も算定回数が増えた加算は?')">加算比較</button>
+    <button onclick="askExample('計量混合を最もしている組合せトップ5は?')">混合トップ</button>
+    <button onclick="askExample('今週の処方件数')">今週件数</button>
+  </div>
+  <div id="ai-input-row">
+    <input id="ai-input" type="text" placeholder="質問を入力..." onkeypress="if(event.key==='Enter')sendAi()">
+    <button id="ai-send" onclick="sendAi()">送信</button>
+  </div>
+</div>
+
+<script>
+const AI_HISTORY = [];
+function toggleAiChat() {{
+  document.getElementById('ai-chat-panel').classList.toggle('open');
+}}
+function askExample(q) {{
+  document.getElementById('ai-input').value = q;
+  sendAi();
+}}
+function appendMsg(role, text, toolInfo) {{
+  const msgs = document.getElementById('ai-messages');
+  const div = document.createElement('div');
+  div.className = 'ai-msg ' + role;
+  div.textContent = text;
+  if (toolInfo) {{
+    const ti = document.createElement('div');
+    ti.className = 'tool-info';
+    ti.textContent = toolInfo;
+    div.appendChild(ti);
+  }}
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}}
+async function sendAi() {{
+  const inp = document.getElementById('ai-input');
+  const q = inp.value.trim();
+  if (!q) return;
+  const sendBtn = document.getElementById('ai-send');
+  inp.value = ''; sendBtn.disabled = true;
+  appendMsg('user', q);
+  const thinking = appendMsg('assistant thinking', '考え中... (DB クエリ実行の可能性あり)');
+
+  try {{
+    const url = '/nsips-stats/api/ask?token={token_qs}';
+    const res = await fetch(url, {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{question: q, history: AI_HISTORY}}),
+    }});
+    const data = await res.json();
+    thinking.remove();
+    if (data.error) {{
+      appendMsg('assistant', 'エラー: ' + data.error);
+    }} else {{
+      let toolInfo = null;
+      if (data.tool_calls && data.tool_calls.length) {{
+        toolInfo = data.tool_calls.map(t =>
+          '💾 ' + (t.rows_returned || 0) + '行'
+        ).join(' | ');
+      }}
+      appendMsg('assistant', data.answer || '(応答なし)', toolInfo);
+      AI_HISTORY.push({{role: 'user', content: q}});
+      AI_HISTORY.push({{role: 'assistant', content: data.answer}});
+      if (AI_HISTORY.length > 20) AI_HISTORY.splice(0, 2);
+    }}
+  }} catch (e) {{
+    thinking.remove();
+    appendMsg('assistant', '通信エラー: ' + e.message);
+  }}
+  sendBtn.disabled = false;
+  inp.focus();
+}}
+</script>
 </body>
 </html>
 """
