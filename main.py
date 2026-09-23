@@ -348,6 +348,24 @@ tr:hover {{ background: #f9f9f9; }}
 </style>
 </head>
 <body>
+<!-- ページ読み込み オーバーレイ (JS で dashboard 準備完了時に非表示) -->
+<div id="page-loading">
+  <div class="spinner"></div>
+  <div class="msg">読み込み中…</div>
+  <div class="sub">大量データのため初回のみ少し時間がかかります</div>
+</div>
+<script>
+// DOMContentLoaded で非表示 (画像/CSS の読み込み待ちはしない)
+document.addEventListener('DOMContentLoaded', function() {{
+  setTimeout(function() {{
+    var el = document.getElementById('page-loading');
+    if (el) {{
+      el.classList.add('hidden');
+      setTimeout(function() {{ el.style.display = 'none'; }}, 300);
+    }}
+  }}, 100);
+}});
+</script>
 <h1>💊 nsips-stats ダッシュボード <span style="font-size:14px;color:#64748b;font-weight:normal;">— {period_label}</span></h1>
 
 <style>
@@ -365,10 +383,10 @@ tr:hover {{ background: #f9f9f9; }}
 .tabs button:hover {{ background: #e2e8f0; color: #0f172a; }}
 </style>
 <div class="tabs">
-  <a class="tab {tab_today}" href="?token={token_qs}&period=today">今日</a>
-  <a class="tab {tab_yesterday}" href="?token={token_qs}&period=yesterday">昨日</a>
-  <a class="tab {tab_month}" href="?token={token_qs}&period=month">今月</a>
-  <a class="tab {tab_all}" href="?token={token_qs}&period=all">全期間</a>
+  <a class="tab {tab_today}" href="?token={token_qs}&period=today" onclick="document.body.classList.add('tab-loading')">今日</a>
+  <a class="tab {tab_yesterday}" href="?token={token_qs}&period=yesterday" onclick="document.body.classList.add('tab-loading')">昨日</a>
+  <a class="tab {tab_month}" href="?token={token_qs}&period=month" onclick="document.body.classList.add('tab-loading')">今月</a>
+  <a class="tab {tab_all}" href="?token={token_qs}&period=all" onclick="document.body.classList.add('tab-loading')">全期間</a>
   <span class="sep"></span>
   <form method="get">
     <input type="hidden" name="token" value="{token_qs}">
@@ -950,7 +968,37 @@ document.addEventListener('DOMContentLoaded', function() {{
 .ai-msg {{ margin-bottom: 10px; padding: 8px 12px; border-radius: 10px; max-width: 90%; }}
 .ai-msg.user {{ background: #ddd6fe; color: #4c1d95; margin-left: auto; }}
 .ai-msg.assistant {{ background: #fff; color: #0f172a; border: 1px solid #e5e7eb; white-space: pre-wrap; }}
-.ai-msg.thinking {{ color: #64748b; font-style: italic; }}
+.ai-msg.thinking {{ color: #64748b; font-style: italic; display: flex; align-items: center; gap: 6px; }}
+.ai-msg.thinking::before {{
+  content: ""; display: inline-block; width: 14px; height: 14px;
+  border: 2px solid #ddd6fe; border-top-color: #7c3aed;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}}
+@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+@keyframes dots {{
+  0%, 20% {{ content: "."; }}
+  40% {{ content: ".."; }}
+  60%, 100% {{ content: "..."; }}
+}}
+.ai-msg.thinking .dots::after {{ content: "..."; animation: dots 1.4s infinite; display: inline-block; width: 20px; }}
+
+/* ページ全体の読み込みオーバーレイ */
+#page-loading {{
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255,255,255,0.85); z-index: 9999;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  gap: 16px; backdrop-filter: blur(3px); transition: opacity 0.3s;
+}}
+#page-loading.hidden {{ opacity: 0; pointer-events: none; }}
+#page-loading .spinner {{
+  width: 48px; height: 48px; border: 4px solid #e5e7eb;
+  border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite;
+}}
+#page-loading .msg {{ color: #475569; font-size: 13px; font-weight: 500; }}
+#page-loading .sub {{ color: #94a3b8; font-size: 11px; }}
+
+/* タブクリック時 (フェッチ中) 全体を半透明に */
+body.tab-loading {{ opacity: 0.6; transition: opacity 0.2s; pointer-events: none; }}
 .ai-msg .tool-info {{
   font-size: 10px; color: #64748b; margin-top: 6px; padding-top: 6px;
   border-top: 1px dashed #cbd5e1; font-family: monospace;
@@ -1031,7 +1079,7 @@ async function sendAi() {{
   const sendBtn = document.getElementById('ai-send');
   inp.value = ''; sendBtn.disabled = true;
   appendMsg('user', q);
-  const thinking = appendMsg('assistant thinking', '考え中... (DB クエリ実行の可能性あり)');
+  const thinking = appendMsg('assistant thinking', '考え中');
 
   try {{
     const url = '/nsips-stats/api/ask?token={token_qs}';
