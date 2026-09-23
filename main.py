@@ -2330,19 +2330,29 @@ def dashboard(
             parts.append(f'<line class="grid" x1="{left_pad}" y1="{y:.1f}" x2="{width-10}" y2="{y:.1f}"/>')
             parts.append(f'<text x="{left_pad-4}" y="{y+3:.1f}" style="font-size:9px;fill:#64748b;text-anchor:end;">{val}</text>')
         # 各バー
+        # ISO 週 (YYYY-Wnn) → その週の月曜日の日付 (MM/DD 形式) に変換
+        def _iso_to_mmdd(wk_str: str) -> tuple[str, str]:
+            """(short_label='M/D', tooltip='YYYY-MM-DD 〜 YYYY-MM-DD') を返す。"""
+            if not wk_str or "-" not in wk_str:
+                return wk_str, wk_str
+            try:
+                yr_s, w_s = wk_str.split("-", 1)
+                yr = int(yr_s); w = int(w_s)
+                # ISO 週の月曜日を取得
+                mon = _date.fromisocalendar(yr, w, 1)
+                sun = _date.fromisocalendar(yr, w, 7)
+                return f"{mon.month}/{mon.day}", f"{mon.isoformat()} 〜 {sun.isoformat()}"
+            except (ValueError, TypeError):
+                return wk_str, wk_str
+
         for i, r in enumerate(weeks):
             x = left_pad + i * (bar_w + bar_gap)
             h = (r["n"] / max_n) * chart_h if max_n > 0 else 0
             y = top_pad + chart_h - h
             wk = r["wk"] or ""
             n = r["n"]
-            parts.append(f'<rect class="bar" x="{x}" y="{y:.1f}" width="{bar_w}" height="{h:.1f}"><title>{wk}: {n}件</title></rect>')
-            # ラベル (週番号のみ)
-            if wk and "-" in wk:
-                yr, w = wk.split("-", 1)
-                lbl = f"{yr[2:]}W{w}"
-            else:
-                lbl = wk
+            lbl, tooltip = _iso_to_mmdd(wk)
+            parts.append(f'<rect class="bar" x="{x}" y="{y:.1f}" width="{bar_w}" height="{h:.1f}"><title>{tooltip}: {n}件</title></rect>')
             parts.append(f'<text class="lbl" x="{x + bar_w/2:.1f}" y="{top_pad + chart_h + 12}" transform="rotate(-45 {x + bar_w/2:.1f} {top_pad + chart_h + 12})">{lbl}</text>')
             # 値ラベル (件数 5 以上のときのみ表示、上に)
             if n >= 5:
