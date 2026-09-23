@@ -391,7 +391,8 @@ tr:hover {{ background: #f9f9f9; }}
   .chart-wrap {{ overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 8px; }}
 
   /* AI チャット: フルスクリーン化 */
-  #ai-chat-fab {{ bottom: 16px; right: 16px; width: 60px; height: 60px; font-size: 26px; }}
+  #ai-chat-fab {{ bottom: 20px; right: 20px; width: 120px; height: 120px; font-size: 48px; }}
+  #ai-chat-fab .ai-fab-label {{ font-size: 12px; }}
   #ai-chat-panel {{
     bottom: 0; right: 0; left: 0; top: 0; width: 100%; max-width: 100%;
     height: 100vh; max-height: 100vh; border-radius: 0; z-index: 1000;
@@ -1018,12 +1019,16 @@ document.addEventListener('DOMContentLoaded', function() {{
 <!-- AI チャットウィジェット -->
 <style>
 #ai-chat-fab {{
-  position: fixed; bottom: 20px; right: 20px; z-index: 900;
-  width: 56px; height: 56px; border-radius: 50%; background: #7c3aed;
-  color: #fff; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-  font-size: 24px; display: flex; align-items: center; justify-content: center;
+  position: fixed; bottom: 24px; right: 24px; z-index: 900;
+  width: 140px; height: 140px; border-radius: 50%;
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  color: #fff; border: none; cursor: pointer;
+  box-shadow: 0 8px 24px rgba(124,58,237,0.4);
+  font-size: 56px; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 4px; transition: all 0.15s;
 }}
-#ai-chat-fab:hover {{ background: #6d28d9; }}
+#ai-chat-fab:hover {{ transform: scale(1.05); box-shadow: 0 12px 32px rgba(124,58,237,0.5); }}
+#ai-chat-fab .ai-fab-label {{ font-size: 14px; font-weight: 600; letter-spacing: 0.05em; }}
 #ai-chat-panel {{
   display: none; position: fixed; bottom: 90px; right: 20px; z-index: 901;
   width: 420px; max-width: 92vw; height: 600px; max-height: 80vh;
@@ -1098,7 +1103,10 @@ body.tab-loading {{ opacity: 0.6; transition: opacity 0.2s; pointer-events: none
 .ai-suggestions button:hover {{ background: #ddd6fe; border-color: #7c3aed; }}
 </style>
 
-<button id="ai-chat-fab" onclick="toggleAiChat()" title="AI に質問">💬</button>
+<button id="ai-chat-fab" onclick="toggleAiChat()" title="AI に質問">
+  💬
+  <span class="ai-fab-label">AIに質問</span>
+</button>
 
 <div id="ai-chat-panel">
   <div class="ai-header">
