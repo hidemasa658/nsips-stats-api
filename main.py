@@ -410,42 +410,74 @@ tr:hover {{ background: #f9f9f9; }}
 .receipt .copay td {{ padding: 8px 12px; color: #78350f; }}
 .receipt .copay .num {{ font-size: 16px; color: #78350f; }}
 
-/* 詳細調剤報酬明細帳票スタイル (image 16/17 レイアウト) */
+/* 詳細調剤報酬明細帳票 (リデザイン: 線 大幅削減 + セクション/小計 強調) */
 .chotei-report {{
-  font-family: "SFMono-Regular", "Yu Gothic Mono", Menlo, Consolas, monospace;
-  font-size: 11px; color: #0f172a; margin: 12px 0 24px;
-  border: 1.5px solid #334155; background: #fff;
+  font-family: -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
+  font-size: 12px; color: #0f172a; margin: 12px 0 24px;
+  border-top: 3px solid #334155; border-bottom: 3px solid #334155;
+  background: #fff;
 }}
-.chotei-report .cr-title {{ font-size: 12px; padding: 6px 10px; background: #f1f5f9; border-bottom: 1px solid #334155; font-weight: 600; }}
+.chotei-report .cr-title {{
+  font-size: 13px; padding: 8px 12px; background: #334155; color: #fff;
+  font-weight: 600; letter-spacing: 0.05em;
+}}
 .chotei-report table {{ width: 100%; border-collapse: collapse; }}
-.chotei-report td {{ padding: 2px 6px; border: 0.5px solid #cbd5e1; vertical-align: top; }}
+.chotei-report td {{ padding: 3px 8px; vertical-align: middle; border: none; }}
+/* グループ (縦書きラベル): 左端に細い background だけ */
 .chotei-report .grp {{
   writing-mode: vertical-rl; text-orientation: upright; text-align: center;
-  background: #f8fafc; font-weight: 600; color: #334155; padding: 8px 4px;
-  width: 22px; min-width: 22px; letter-spacing: 3px;
+  background: #f1f5f9; color: #475569; font-weight: 600; padding: 6px 3px;
+  width: 20px; min-width: 20px; letter-spacing: 2px; font-size: 11px;
 }}
-.chotei-report .lbl {{ color: #334155; padding-left: 10px; }}
-.chotei-report .lbl.sub {{ padding-left: 22px; color: #64748b; font-size: 10px; }}
-.chotei-report .lbl.sect {{ font-weight: 600; color: #0f172a; background: #f8fafc; }}
-.chotei-report .lbl.total {{ font-weight: 600; background: #f1f5f9; }}
-.chotei-report .n, .chotei-report .amt, .chotei-report .pct {{
+/* ラベル種類 */
+.chotei-report .lbl {{ color: #334155; padding-left: 12px; font-size: 12px; }}
+.chotei-report .lbl.sub {{ padding-left: 26px; color: #64748b; font-size: 11px; }}
+.chotei-report .lbl.sect {{ font-weight: 700; color: #0f172a; font-size: 12px; padding-top: 6px; }}
+.chotei-report .lbl.total {{ font-weight: 700; color: #0f172a; font-size: 13px; }}
+/* 数値 */
+.chotei-report .n, .chotei-report .amt {{
   text-align: right; font-variant-numeric: tabular-nums;
-  min-width: 60px; padding-right: 8px;
+  min-width: 65px; padding-right: 10px; font-family: "SF Mono", Menlo, Consolas, monospace;
 }}
-.chotei-report .pct {{ color: #64748b; font-size: 10px; min-width: 55px; }}
-.chotei-report tr.zero .n, .chotei-report tr.zero .amt, .chotei-report tr.zero .pct {{ color: #cbd5e1; }}
-.chotei-report .subtotal {{ background: #fef3c7; font-weight: 600; }}
-.chotei-report .grand-total {{ background: #0f172a; color: #fff; font-weight: bold; }}
-.chotei-report .grand-total td {{ color: #fff; padding: 4px 8px; font-size: 12px; }}
-.chotei-report th {{
-  background: #e2e8f0; color: #475569; padding: 3px 6px;
-  border: 0.5px solid #cbd5e1; font-weight: 500; font-size: 10px;
-  text-align: right;
+.chotei-report .amt {{ min-width: 80px; }}
+.chotei-report .pct {{
+  text-align: right; font-variant-numeric: tabular-nums;
+  color: #94a3b8; font-size: 11px; min-width: 55px; padding-right: 8px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
 }}
-.chotei-report .double-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0; }}
-.chotei-report .double-col > div {{ border: none; }}
-.chotei-report .double-col table {{ border-left: 1.5px solid #334155; }}
-.chotei-report .double-col > div:first-child table {{ border-left: none; }}
+/* 0 値: 薄めのグレー */
+.chotei-report tr.zero td .n, .chotei-report tr.zero td .amt, .chotei-report tr.zero td .pct {{ color: #e5e7eb; }}
+/* セクション区切り (大見出し行) */
+.chotei-report tr.section-divider td {{
+  border-top: 2px solid #334155;
+  padding-top: 8px;
+}}
+/* 小計行: 上に細線 + 淡い背景 + 太字 */
+.chotei-report tr.subtotal td {{
+  border-top: 1.5px solid #94a3b8;
+  background: linear-gradient(to right, #fef3c7 0%, #fef9e7 100%);
+  padding: 6px 8px;
+  font-weight: 600;
+}}
+.chotei-report tr.subtotal .lbl {{ font-weight: 700; color: #78350f; }}
+.chotei-report tr.subtotal .n, .chotei-report tr.subtotal .amt {{ font-weight: 700; color: #78350f; }}
+.chotei-report tr.subtotal .pct {{ color: #a16207; font-weight: 600; }}
+/* 総合計 */
+.chotei-report tr.grand-total td {{
+  background: #0f172a; color: #fff; font-weight: bold;
+  padding: 10px 12px; font-size: 14px; border-top: 3px solid #0f172a;
+}}
+.chotei-report tr.grand-total .amt {{ font-size: 16px; color: #fff; }}
+.chotei-report tr.grand-total .pct {{ color: #cbd5e1; }}
+/* ヘッダー */
+.chotei-report thead th {{
+  background: #f8fafc; color: #64748b; padding: 5px 8px;
+  border: none; border-bottom: 1.5px solid #cbd5e1;
+  font-weight: 500; font-size: 11px; text-align: right;
+}}
+.chotei-report thead th:empty {{ border: none; }}
+/* 左右 テーブル間の縦の区切り (中央の grp 列) */
+.chotei-report tr td:nth-child(6) {{ border-left: 2px solid #cbd5e1; }}
 
 /* 薬局業務日報 合計欄スタイル */
 .report-daily {{
@@ -502,6 +534,43 @@ tr:hover {{ background: #f9f9f9; }}
 .heatmap-wrap .hm-5 {{ background: #d97706; color: #fff; font-weight: 700; }}
 .heatmap-wrap .hm-clickable {{ cursor: pointer; }}
 .heatmap-wrap .hm-clickable:hover {{ outline: 2px solid #1e40af; outline-offset: -2px; z-index: 2; position: relative; }}
+
+/* 予製計画レポート テーブル (線 大幅削減 + ゼブラ + 強調バー) */
+.planning-table {{ width: 100%; border-collapse: collapse; font-size: 12px; margin: 12px 0; }}
+.planning-table thead th {{
+  background: #f8fafc; color: #475569; font-weight: 600; font-size: 11px;
+  padding: 6px 8px; border: none; border-bottom: 2px solid #cbd5e1;
+  text-align: center;
+}}
+.planning-table thead th.pt-now {{ border-bottom-color: #10b981; }}
+.planning-table thead th.pt-prev {{ border-bottom-color: #f59e0b; }}
+.planning-table thead th.pt-week {{ border-bottom-color: #3b82f6; }}
+.planning-table thead th.pt-avg {{ border-bottom-color: #8b5cf6; }}
+.planning-table thead th.pt-yosei {{ border-bottom-color: #ef4444; }}
+.planning-table tbody td {{
+  padding: 5px 8px; border: none; border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}}
+.planning-table tbody tr:hover td {{ background: #f8fafc; }}
+.planning-table tbody tr:nth-child(even) td {{ background: #fbfbfd; }}
+.planning-table tbody tr:nth-child(even):hover td {{ background: #f1f5f9; }}
+.planning-table td.combo-cell {{
+  font-size: 12px; color: #0f172a; padding-left: 8px;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border-left: 3px solid transparent;
+}}
+.planning-table .num {{ text-align: right; font-variant-numeric: tabular-nums; font-family: "SF Mono", Menlo, monospace; }}
+/* 期間セル: 左に細い縦バー入れて背景色をつける */
+.planning-table td.cell-now  {{ background: rgba(240,253,244,0.5); }}
+.planning-table td.cell-prev {{ background: rgba(254,243,199,0.5); }}
+.planning-table td.cell-week {{ background: rgba(239,246,255,0.5); }}
+.planning-table td.cell-avg  {{ background: rgba(245,243,255,0.5); }}
+.planning-table td.cell-yosei{{ background: rgba(254,242,242,0.5); font-weight: 600; color: #991b1b; }}
+.planning-table td.qty-cell {{ font-size: 11px; padding: 4px 8px; }}
+.planning-table td.qty-cell .badge-qty {{
+  display: inline-block; background: #fef3c7; color: #78350f;
+  padding: 1px 6px; border-radius: 10px; font-size: 10px; margin: 1px 2px;
+}}
 
 /* MIX 内訳モーダル */
 #mix-detail-modal {{
@@ -742,21 +811,21 @@ document.addEventListener('DOMContentLoaded', function() {{
 <div style="margin-top:12px;">
 {planning_report}
 <div style="overflow-x:auto;">
-<table style="font-size:12px;">
+<table class="planning-table">
 <thead>
   <tr>
     <th rowspan="2">組合せ</th>
-    <th colspan="2" class="num" style="background:#f0fdf4;">📅 今月 / 前年同月</th>
-    <th colspan="2" class="num" style="background:#eff6ff;">📅 今週 / 前年同週</th>
-    <th rowspan="2" class="num" style="background:#f5f3ff;">月平均<br>(今年度)</th>
-    <th rowspan="2" class="num" style="background:#fef2f2;">予製推奨<br>2週分</th>
-    <th rowspan="2" style="background:#fef3c7;">MIX 量 別内訳<br><span style="font-weight:normal;font-size:10px;color:#78350f;">前年同月分</span></th>
+    <th colspan="2" class="pt-now">今月 / 前年同月</th>
+    <th colspan="2" class="pt-week">今週 / 前年同週</th>
+    <th rowspan="2" class="pt-avg">月平均<br><span style="font-weight:normal;font-size:10px;color:#8b5cf6;">今年度</span></th>
+    <th rowspan="2" class="pt-yosei">予製推奨<br><span style="font-weight:normal;font-size:10px;color:#ef4444;">2週分</span></th>
+    <th rowspan="2">前年同月 MIX 量別</th>
   </tr>
   <tr>
-    <th class="num" style="background:#f0fdf4;font-size:10px;color:#059669;">今月</th>
-    <th class="num" style="background:#fef3c7;font-size:10px;color:#78350f;">前年同月</th>
-    <th class="num" style="background:#eff6ff;font-size:10px;color:#1e40af;">今週</th>
-    <th class="num" style="background:#fef3c7;font-size:10px;color:#78350f;">前年同週</th>
+    <th class="pt-now" style="font-size:10px;color:#059669;">今月</th>
+    <th class="pt-prev" style="font-size:10px;color:#a16207;">前年同月</th>
+    <th class="pt-week" style="font-size:10px;color:#1e40af;">今週</th>
+    <th class="pt-prev" style="font-size:10px;color:#a16207;">前年同週</th>
   </tr>
 </thead>
 <tbody>
@@ -1400,7 +1469,6 @@ def _detailed_chotei_kwargs(conn, period_where: str) -> dict:
     def _combine(left, right, grp1_label, grp2_label):
         """左右のアイテム配列を結合して <tr> 行に変換。"""
         rows_count = max(len(left), len(right))
-        # 空セル埋め
         while len(left) < rows_count:
             left.append(("blank", "", 0, 0))
         while len(right) < rows_count:
@@ -1413,9 +1481,17 @@ def _detailed_chotei_kwargs(conn, period_where: str) -> dict:
             g2 = f'<td class="grp">{grp2[i]}</td>' if grp2[i] else '<td class="grp"></td>'
             lc = _cells(*left[i])
             rc = _cells(*right[i])
-            row_cls = ""
+            classes = []
+            # 小計行 (【○○合計】)
             if left[i][0] == "total" or right[i][0] == "total":
-                row_cls = "subtotal"
+                classes.append("subtotal")
+            # セクション見出し (【○○】)
+            elif left[i][0] == "sect" or right[i][0] == "sect":
+                classes.append("section-divider")
+            # 0 値のみの行
+            if all(x[2] == 0 and x[3] == 0 for x in (left[i], right[i])) and not classes:
+                classes.append("zero")
+            row_cls = " ".join(classes)
             html.append(f'<tr class="{row_cls}">{g1}{lc}{g2}{rc}</tr>')
         return "".join(html)
 
@@ -2031,13 +2107,12 @@ def dashboard(
             return f"{qty/1000:.1f}k{unit}"
         return f"{qty:.0f}{unit}"
 
-    def _fmt_period_cell(cur, prev, unit, bg_cur, bg_prev):
-        """今期/前期のセル: 件数上 + 量下、色分け背景"""
+    def _fmt_period_cell(cur, prev, unit, cur_class, prev_class):
+        """今期/前期のセル: 件数上 + 量下、増減アイコン付き"""
         cur_n = cur.get("n", 0)
         cur_q = cur.get("qty", 0.0)
         prev_n = prev.get("n", 0)
         prev_q = prev.get("qty", 0.0)
-        # 増減アイコン
         if prev_n or prev_q:
             diff_pct = ((cur_q - prev_q) / prev_q * 100) if prev_q else 0
             arrow = "↑" if diff_pct > 10 else ("↓" if diff_pct < -10 else "→")
@@ -2046,14 +2121,14 @@ def dashboard(
             arrow = "🆕" if cur_n else "—"
             arrow_color = "#dc2626"
         return (
-            f'<td class="num" style="background:{bg_cur};padding:4px 6px;">'
-            f'<div style="font-weight:600;">{cur_n}件</div>'
-            f'<div style="font-size:10px;color:#334155;">{_fmt_qty(cur_q, unit)}</div>'
+            f'<td class="num {cur_class}">'
+            f'<div style="font-weight:600;color:#0f172a;">{cur_n}</div>'
+            f'<div style="font-size:10px;color:#64748b;">{_fmt_qty(cur_q, unit)}</div>'
             f'</td>'
-            f'<td class="num" style="background:{bg_prev};padding:4px 6px;">'
-            f'<div style="color:#78350f;">{prev_n}件</div>'
+            f'<td class="num {prev_class}">'
+            f'<div style="color:#78350f;">{prev_n}</div>'
             f'<div style="font-size:10px;color:#a16207;">{_fmt_qty(prev_q, unit)}</div>'
-            f'<div style="font-size:10px;color:{arrow_color};font-weight:600;margin-top:2px;">{arrow}</div>'
+            f'<div style="font-size:10px;color:{arrow_color};font-weight:700;">{arrow}</div>'
             f'</td>'
         )
 
@@ -2065,9 +2140,9 @@ def dashboard(
         yosei_recommend = monthly_avg_qty * 0.5
         all_qtys = sorted(s["qty_hist_prev_month"].items(), key=lambda x: -x[1])
         if all_qtys:
-            qty_dist = " ".join(f'<span style="background:#fef3c7;color:#78350f;padding:1px 6px;border-radius:8px;font-size:11px;display:inline-block;margin:1px 2px;">{q:g}{unit}×{n}</span>' for q, n in all_qtys if q)
+            qty_dist = " ".join(f'<span class="badge-qty">{q:g}{unit}×{n}</span>' for q, n in all_qtys if q)
         else:
-            qty_dist = '<span style="color:#94a3b8;font-size:11px;">前年同月データなし</span>'
+            qty_dist = '<span style="color:#94a3b8;font-size:11px;">—</span>'
         # 今月/前年同月 & 今週/前年同週
         cm = s["monthly"].get(this_month_key, {"n": 0, "qty": 0.0})
         pm = s["monthly"].get(prev_year_same_month, {"n": 0, "qty": 0.0})
@@ -2075,15 +2150,15 @@ def dashboard(
         pw = s["weekly"].get(prev_year_same_week, {"n": 0, "qty": 0.0})
         return (
             f'<tr>'
-            f'<td style="font-size:12px;">{_h(combo)}</td>'
-            + _fmt_period_cell(cm, pm, unit, "#f0fdf4", "#fef3c7")  # 今月/前年同月
-            + _fmt_period_cell(cw, pw, unit, "#eff6ff", "#fef3c7")  # 今週/前年同週
-            + f'<td class="num" style="background:#f5f3ff"><strong>{_fmt_qty(monthly_avg_qty, unit)}</strong></td>'
-            f'<td class="num" style="background:#fef2f2"><strong style="color:#991b1b">{_fmt_qty(yosei_recommend, unit)}</strong></td>'
-            f'<td>{qty_dist}</td>'
+            f'<td class="combo-cell" title="{_h(combo)}">{_h(combo)}</td>'
+            + _fmt_period_cell(cm, pm, unit, "cell-now", "cell-prev")
+            + _fmt_period_cell(cw, pw, unit, "cell-week", "cell-prev")
+            + f'<td class="num cell-avg"><strong>{_fmt_qty(monthly_avg_qty, unit)}</strong></td>'
+            f'<td class="num cell-yosei">{_fmt_qty(yosei_recommend, unit)}</td>'
+            f'<td class="qty-cell">{qty_dist}</td>'
             f'</tr>'
         )
-    planning_rows_html = "\n".join(_planning_row(c, s) for c, s in planning_sorted) or '<tr><td colspan="9">(データなし)</td></tr>'
+    planning_rows_html = "\n".join(_planning_row(c, s) for c, s in planning_sorted) or '<tr><td colspan="8">(データなし)</td></tr>'
 
     planning_report_html = (
         f'<div style="background:#f8fafc;padding:10px 14px;border-radius:6px;margin:12px 0;font-size:12px;color:#475569;">'
