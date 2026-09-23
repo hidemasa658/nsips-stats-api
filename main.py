@@ -345,6 +345,81 @@ tr:hover {{ background: #f9f9f9; }}
   table {{ font-size: 13px; }}
   th, td {{ padding: 6px 8px; }}
 }}
+
+/* ========== スマホ最適化 (768px 以下) ========== */
+@media (max-width: 768px) {{
+  body {{ max-width: 100%; margin: 8px auto; padding: 0 10px; font-size: 14px; }}
+  h1 {{ font-size: 18px; margin-bottom: 12px; padding-bottom: 6px; }}
+  h1 span {{ display: block; margin-top: 4px; font-size: 12px !important; }}
+  h2 {{ font-size: 15px; margin-top: 24px; padding-left: 8px; border-left-width: 3px; }}
+
+  /* タブ: 横スクロール */
+  .tabs {{ overflow-x: auto; flex-wrap: nowrap; margin: 8px -10px; padding: 0 10px; scrollbar-width: none; }}
+  .tabs::-webkit-scrollbar {{ display: none; }}
+  .tab {{ flex-shrink: 0; padding: 8px 14px; font-size: 13px; }}
+  .tabs form {{ flex-shrink: 0; }}
+  .tabs input[type="date"], .tabs input[type="month"] {{ font-size: 13px; min-width: 130px; }}
+
+  /* 業務日報 合計欄: 縦積み */
+  .report-daily {{ flex-direction: column; gap: 12px; font-size: 14px; padding: 12px; }}
+  .report-daily .rd-left {{ min-width: auto; }}
+  .report-daily .rd-right {{ min-width: auto; overflow-x: auto; }}
+  .report-daily table.rd-t th {{ font-size: 10px; padding: 3px 6px; }}
+  .report-daily table.rd-t td {{ padding: 2px 6px; }}
+
+  /* 詳細帳票: 横スクロール可 */
+  .chotei-report {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+  .chotei-report .cr-title {{ font-size: 13px; padding: 8px 10px; }}
+  .chotei-report table {{ min-width: 640px; font-size: 11px; }}
+  .chotei-report .grp {{ writing-mode: horizontal-tb !important; width: 30px; padding: 2px; }}
+  .chotei-report tr.grand-total td {{ padding: 8px 10px; font-size: 13px; }}
+
+  /* 予製計画テーブル (軟膏データ): 横スクロール */
+  .planning-table {{ min-width: 720px; font-size: 11px; }}
+  .planning-table td.combo-cell {{ max-width: 150px; font-size: 11px; }}
+  div[style*="overflow-x:auto"] {{ -webkit-overflow-scrolling: touch; }}
+
+  /* ヒートマップ */
+  .heatmap-wrap {{ font-size: 10px; }}
+  .heatmap-wrap .hm-label {{ max-width: 130px; font-size: 10px; }}
+
+  /* 折りたたみ details */
+  details {{ margin: 12px -10px !important; border-radius: 0 !important; border-left: none !important; border-right: none !important; }}
+  details summary {{ font-size: 13px !important; padding: 10px !important; }}
+
+  /* SVG チャート: 横スクロール */
+  .chart-wrap {{ overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 8px; }}
+
+  /* AI チャット: フルスクリーン化 */
+  #ai-chat-fab {{ bottom: 16px; right: 16px; width: 60px; height: 60px; font-size: 26px; }}
+  #ai-chat-panel {{
+    bottom: 0; right: 0; left: 0; top: 0; width: 100%; max-width: 100%;
+    height: 100vh; max-height: 100vh; border-radius: 0; z-index: 1000;
+  }}
+  #ai-chat-panel .ai-header {{ font-size: 16px; padding: 14px 16px; }}
+  #ai-chat-panel .ai-header .close {{ font-size: 24px; padding: 0 8px; }}
+  #ai-messages {{ font-size: 14px; padding: 16px; }}
+  .ai-msg {{ padding: 10px 14px; }}
+  #ai-input {{ font-size: 14px; padding: 12px; }}
+  #ai-send {{ font-size: 14px; padding: 12px 18px; }}
+  .ai-suggestions button {{ font-size: 12px; padding: 6px 10px; }}
+
+  /* 加算料金累計テーブル: 横スクロール */
+  h2 + p, h2 + table {{ font-size: 12px; }}
+  h2 + table {{ overflow-x: auto; display: block; }}
+
+  /* 日別集計 */
+  h2 + table[style*="max-width"] {{ max-width: 100% !important; }}
+}}
+
+/* ========== 極小スマホ (400px 以下、iPhone SE 等) ========== */
+@media (max-width: 400px) {{
+  body {{ padding: 0 6px; }}
+  h1 {{ font-size: 16px; }}
+  .tab {{ padding: 6px 10px; font-size: 12px; }}
+  .report-daily {{ font-size: 12px; padding: 8px; }}
+  .chotei-report table {{ font-size: 10px; }}
+}}
 </style>
 </head>
 <body>
