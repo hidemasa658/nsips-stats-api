@@ -178,15 +178,19 @@ def parse_nsips(body: str) -> dict:
 
         elif rec == "2":
             presc_date = _col(fields, 4)
+            dispensed_date = _col(fields, 7)  # 実際の調剤日 (処方日と異なる可能性)
             result["prescription"] = {
                 "prescription_date": presc_date,
                 "clinic_code": _col(fields, 12),
                 "clinic_name": _col(fields, 14),
                 "doctor_name": None,
             }
-            # dispense_date は record 2 [4] の 処方日 を優先。VER は
-            # バッチエクスポートで乖離するため 信頼できない。
-            if presc_date and len(presc_date) >= 8 and presc_date[:8].isdigit():
+            # dispense_date は record 2 [7] (調剤日) を優先。
+            # レセコン日計表と整合させるため、処方日ではなく調剤日で分類。
+            # VER はバッチエクスポート時にエクスポート時刻になる不具合があり信頼不可。
+            if dispensed_date and len(dispensed_date) >= 8 and dispensed_date[:8].isdigit():
+                result["dispense_date"] = dispensed_date[:8]
+            elif presc_date and len(presc_date) >= 8 and presc_date[:8].isdigit():
                 result["dispense_date"] = presc_date[:8]
 
         elif rec == "3":
