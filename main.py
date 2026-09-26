@@ -125,6 +125,20 @@ def _extract_receipt_info(body_sanitized: str) -> tuple[str, str, str] | None:
     return None
 
 
+def _extract_dispense_date(body_sanitized: str) -> str | None:
+    """body_sanitized の record 2 [7] (調剤日) を抽出。
+    client parser が古くて処方日を送ってきても安全弁として上書き。"""
+    if not body_sanitized:
+        return None
+    for line in body_sanitized.splitlines():
+        parts = line.split(",")
+        if parts and parts[0] == "2" and len(parts) >= 8:
+            d = parts[7]
+            if d and len(d) >= 8 and d[:8].isdigit():
+                return d[:8]
+    return None
+
+
 def _delete_prescription_cascade(conn, pid: int) -> None:
     """prescription とその関連テーブル全てから 削除。"""
     for table in ("drugs", "fees", "rps", "drug_pricings", "mix_events"):
@@ -140,6 +154,11 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
     ).fetchone()
     if row is not None:
         return IngestResponse(status="duplicate", prescription_id=row["id"])
+
+    # 安全弁: client parser が古い場合 body_sanitized から dispense_date を再抽出
+    dispense_date_from_body = _extract_dispense_date(payload.body_sanitized or "")
+    if dispense_date_from_body:
+        payload.dispense_date = dispense_date_from_body
 
     # A/U 自動 dedup: 同じ (受付番号, 枝番, dispense_date) の既存レコードと突合
     #   U 受信 → 既存 (A/U) 全削除 して自身を insert (訂正版で上書き)

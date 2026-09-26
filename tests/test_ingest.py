@@ -151,6 +151,32 @@ def test_ingest_dedup_A_skipped_when_U_exists():
     assert n == 1
 
 
+def test_ingest_server_overrides_dispense_date_from_body():
+    """client が 処方日 [4] を dispense_date として送っても、
+    サーバ側で body_sanitized の [7] (調剤日) に上書き。"""
+    client = TestClient(app)
+    # body: 処方日=20260925, 調剤日=20260926
+    body = (
+        "VER010603,20260926090000,Medicom,SERVER,14,4,X,ぞうさん薬局,X,X,X,\n"
+        "2,260926001111101,10,A,20260925,,20260926,20260926,0,0,0,1,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X,X\n"
+        "5,100,20,50,0,170,0,70,0,50,0,50,170,510,0,0,0,510,510,510,0,0,0\n"
+    )
+    p = _payload("override_test")
+    p["body_sanitized"] = body
+    p["dispense_date"] = "20260925"  # client は 処方日を送信 (旧 parser)
+
+    r = client.post("/ingest", json=p, headers=_headers())
+    assert r.json()["status"] == "ok"
+
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT dispense_date FROM prescriptions WHERE source_id='override_test'"
+    ).fetchone()
+    assert row["dispense_date"] == "20260926", (
+        f"server が調剤日で上書きするはず: {row['dispense_date']}"
+    )
+
+
 def test_ingest_different_receipt_no_conflict():
     """同一 dispense_date で 受付番号が異なれば dedup されない"""
     client = TestClient(app)
