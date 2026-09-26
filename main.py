@@ -248,12 +248,13 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
             """
             INSERT INTO rps
               (prescription_id, rp_no, usage_code, usage_text, usage_kind, site_text,
-               is_mixed, drug_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               days, times_per_day, is_mixed, drug_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 presc_id, rp.rp_no, rp.usage_code, rp.usage_text, usage_kind,
-                rp.site_text, 1 if rp.is_mixed else 0, rp.drug_count,
+                rp.site_text, rp.days, rp.times_per_day,
+                1 if rp.is_mixed else 0, rp.drug_count,
             ),
         )
 
@@ -1136,6 +1137,15 @@ document.addEventListener('DOMContentLoaded', function() {{
 <table style="max-width:520px;font-size:13px;">
   <thead><tr><th>用法区分</th><th class="num">剤数 (RP)</th><th class="num">構成比</th></tr></thead>
   <tbody>{usage_kind_rows}</tbody>
+</table>
+
+<h2>調剤管理料 推定内訳 <span style="font-size:12px;color:#64748b;font-weight:normal;">({period_label}) — record 5[11] 補完</span></h2>
+<div style="font-size:11px;color:#64748b;margin:-4px 0 6px;">
+  ⚠️ NSIPS には調剤管理料の個別コードがないため、record 3 の 内服RP・処方日数から令和8年度点数で推定。
+</div>
+<table style="max-width:640px;font-size:13px;">
+  <thead><tr><th>区分</th><th>点数</th><th class="num">推定件数</th><th class="num">推定点数</th></tr></thead>
+  <tbody>{kanri_rows}</tbody>
 </table>
 
 <h2>計量混合加算 内訳 <span style="font-size:12px;color:#64748b;font-weight:normal;">({period_label})</span></h2>
@@ -2251,6 +2261,41 @@ def dashboard(
         for r in usage_kind_data
     ) or '<tr><td colspan="3">(データなし)</td></tr>'
 
+    # 調剤管理料 推定 (record 5 [11] の内訳を rps.days から推定)
+    # 令和8年度点数: 管理料1 内服あり 28日以上=60点, 27日以下=10点 / 管理料2 内服無=10点
+    kanri_rows = conn.execute(
+        f"""SELECT
+              CASE
+                WHEN MAX(CASE WHEN r.usage_kind IN ('内服','頓服') THEN 1 ELSE 0 END) = 1 THEN
+                  CASE WHEN MAX(CASE WHEN r.usage_kind IN ('内服','頓服') THEN r.days ELSE 0 END) >= 28
+                       THEN '管理料1_長期' ELSE '管理料1_短期' END
+                ELSE '管理料2'
+              END AS kanri_kind
+             FROM prescriptions p LEFT JOIN rps r ON r.prescription_id = p.id
+             WHERE {period_where}
+             GROUP BY p.id"""
+    ).fetchall()
+    from collections import Counter as _Counter
+    kanri_cnt = _Counter(r["kanri_kind"] for r in kanri_rows)
+    _rows = [
+        ("調剤管理料1 (内服・長期 28日以上)", "60 点", kanri_cnt.get("管理料1_長期", 0), 60),
+        ("調剤管理料1 (内服・短期 27日以下)", "10 点", kanri_cnt.get("管理料1_短期", 0), 10),
+        ("調剤管理料2 (内服なし)",           "10 点", kanri_cnt.get("管理料2",     0), 10),
+    ]
+    kanri_rows_html = "\n".join(
+        f'<tr><td>{name}</td><td>{unit}</td>'
+        f'<td class="num">{n:,}</td><td class="num">{n*p:,}</td></tr>'
+        for (name, unit, n, p) in _rows
+    )
+    kanri_total_n = sum(n for _,_,n,_ in _rows)
+    kanri_total_pts = sum(n*p for _,_,n,p in _rows)
+    kanri_rows_html += (
+        f'<tr style="font-weight:700;background:#f8fafc;">'
+        f'<td colspan="2">推定合計</td>'
+        f'<td class="num">{kanri_total_n:,}</td>'
+        f'<td class="num">{kanri_total_pts:,}</td></tr>'
+    )
+
     # 計量混合加算 内訳 (fees テーブル、コード別)
     mix_breakdown_data = conn.execute(
         f"""SELECT f.code, f.name, COUNT(*) AS n, SUM(f.points) AS pts
@@ -2977,6 +3022,7 @@ def dashboard(
         drug_rows=drug_rows_html,
         usage_kind_rows=usage_kind_rows_html,
         mix_breakdown_rows=mix_breakdown_rows_html,
+        kanri_rows=kanri_rows_html,
         fee_rows=fee_rows_html,
         chiiki_charts=chiiki_charts_html,
         mix_total=mix_total,

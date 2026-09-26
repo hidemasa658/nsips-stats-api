@@ -23,6 +23,8 @@ class RpIn(BaseModel):
     usage_text: str | None = None
     usage_kind: str | None = None  # 内服/頓服/外用/その他
     site_text: str | None = None
+    days: int | None = None          # 処方日数
+    times_per_day: int | None = None
     is_mixed: bool = False
     drug_count: int = 0
 

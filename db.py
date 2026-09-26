@@ -131,6 +131,8 @@ def init_db(conn: sqlite3.Connection) -> None:
           usage_text TEXT,
           usage_kind TEXT,  -- 内服/頓服/外用/その他
           site_text TEXT,
+          days INTEGER,          -- 処方日数 (調剤管理料判定用)
+          times_per_day INTEGER, -- 1日回数
           is_mixed INTEGER DEFAULT 0,
           drug_count INTEGER DEFAULT 0,
           FOREIGN KEY (prescription_id) REFERENCES prescriptions(id)
