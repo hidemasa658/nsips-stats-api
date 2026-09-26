@@ -11,6 +11,9 @@ from main import app, get_conn  # noqa: E402
 def _clean() -> None:
     conn = get_conn()
     conn.executescript("DELETE FROM drugs; DELETE FROM fees; DELETE FROM prescriptions;")
+    import main as _m
+    if hasattr(_m, "_DASHBOARD_CACHE"):
+        _m._DASHBOARD_CACHE.clear()
 
 
 def test_dashboard_requires_token():
