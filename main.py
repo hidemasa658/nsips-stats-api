@@ -43,6 +43,12 @@ def get_conn() -> sqlite3.Connection:
     return _conn
 
 
+# 単一 SQLite コネクション は並行 write に安全でないため
+# ingest 側で serialization ロックを掛ける
+import threading as _threading  # noqa: E402
+_INGEST_LOCK = _threading.Lock()
+
+
 def verify_token(x_api_token: str | None = Header(default=None)) -> None:
     if not API_TOKEN or x_api_token != API_TOKEN:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
@@ -159,6 +165,11 @@ def _delete_prescription_cascade(conn, pid: int) -> None:
 
 @app.post("/ingest", response_model=IngestResponse)
 def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestResponse:
+    with _INGEST_LOCK:
+        return _ingest_impl(payload)
+
+
+def _ingest_impl(payload: "IngestPayload") -> "IngestResponse":  # noqa: F821
     conn = get_conn()
     row = conn.execute(
         "SELECT id FROM prescriptions WHERE source_id=?", (payload.source_id,)
