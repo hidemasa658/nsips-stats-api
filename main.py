@@ -62,6 +62,38 @@ class _AskRequest(_BaseModel):
     history: list = []
 
 
+class _CheckSourceIdsRequest(_BaseModel):
+    source_ids: list[str]
+
+
+@app.post("/api/check_source_ids")
+def check_source_ids(
+    payload: _CheckSourceIdsRequest,
+    _: None = Depends(verify_token),
+) -> dict:
+    """指定 source_id のリストのうち DB に既存のものだけを返す。
+    nsips-watcher の未送信スキャン用。"""
+    if not payload.source_ids:
+        return {"existing": [], "missing_count": 0, "total_checked": 0}
+    conn = get_conn()
+    # SQLite の IN 制限は SQLITE_MAX_VARIABLE_NUMBER (デフォ 999) なので 500 件ずつ
+    existing: set[str] = set()
+    BATCH = 500
+    for i in range(0, len(payload.source_ids), BATCH):
+        batch = payload.source_ids[i:i + BATCH]
+        placeholders = ",".join("?" * len(batch))
+        rows = conn.execute(
+            f"SELECT source_id FROM prescriptions WHERE source_id IN ({placeholders})",
+            batch,
+        ).fetchall()
+        existing.update(r["source_id"] for r in rows)
+    return {
+        "existing": list(existing),
+        "missing_count": len(payload.source_ids) - len(existing),
+        "total_checked": len(payload.source_ids),
+    }
+
+
 @app.post("/api/ask")
 def api_ask(
     payload: _AskRequest,
