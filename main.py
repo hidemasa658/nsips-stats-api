@@ -404,6 +404,84 @@ def export_prescriptions(_: None = Depends(verify_token)) -> PrescriptionsExport
     )
 
 
+@app.get("/stats/daily_receipts")
+def daily_receipts(
+    date: str,
+    x_api_token: str | None = Header(default=None),
+    token: str | None = Query(default=None),
+) -> dict:
+    """日計表ビュー: 指定日の全レセプトを 時系列順で返却。
+
+    date: YYYYMMDD 形式 (dispense_date と一致)
+    レセコン日計表の形式に合わせた 1行 = 1レセプト。
+    dashboard 経由でも呼べるよう header or query の token 認証をサポート。
+    """
+    provided = x_api_token or token
+    if not API_TOKEN or provided != API_TOKEN:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
+    if not (date and len(date) == 8 and date.isdigit()):
+        return {"date": date, "rows": [], "total": {}}
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT id, dispensed_at, total_points, patient_copay,
+                  patient_copay_total, senteryoyo_fee_excl_tax, senteryoyo_tax,
+                  body_sanitized
+           FROM prescriptions
+           WHERE dispense_date = ?
+           ORDER BY dispensed_at, id""",
+        (date,),
+    ).fetchall()
+
+    out_rows = []
+    tot_pts = tot_copay = tot_sen = tot_jihi = tot_total = 0
+    for r in rows:
+        # body から 業務区分 抽出
+        kubun = ""
+        body = r["body_sanitized"] or ""
+        for line in body.splitlines():
+            parts = line.split(",")
+            if parts and parts[0] == "2" and len(parts) >= 4:
+                kubun = parts[3]
+                break
+
+        pts = r["total_points"] or 0
+        copay = r["patient_copay"] or 0
+        sen = (r["senteryoyo_fee_excl_tax"] or 0) + (r["senteryoyo_tax"] or 0)
+        copay_all = r["patient_copay_total"] or 0
+        # 自費 = 総入金 - 保険内 - 保険外
+        jihi = max(0, copay_all - copay - sen)
+        total = copay + sen + jihi
+
+        t = (r["dispensed_at"] or "")[11:16]  # HH:MM
+        out_rows.append({
+            "id": r["id"],
+            "time": t,
+            "points": pts,
+            "copay": copay,
+            "senteryoyo": sen,
+            "jihi": jihi,
+            "total": total,
+            "kubun": kubun,
+        })
+        tot_pts += pts
+        tot_copay += copay
+        tot_sen += sen
+        tot_jihi += jihi
+        tot_total += total
+
+    return {
+        "date": date,
+        "rows": out_rows,
+        "total": {
+            "points": tot_pts,
+            "copay": tot_copay,
+            "senteryoyo": tot_sen,
+            "jihi": tot_jihi,
+            "total": tot_total,
+        },
+    }
+
+
 # ==============================================================================
 # HTML ダッシュボード (ブラウザ表示用)
 # ==============================================================================
@@ -966,13 +1044,90 @@ document.addEventListener('DOMContentLoaded', function() {{
   <div class="kpi"><div class="val">{dp_short_count:,}</div><div class="lbl">短期処方 27日以下 (10点/剤)</div></div>
 </div>
 
-<h2>日別集計 (当月分)</h2>
-<table style="font-size:12px;max-width:640px;">
-  <thead><tr><th>日付</th><th class="num">件数 (件)</th><th class="num">点数 (点)</th><th class="num">負担金 (円)</th></tr></thead>
+<h2>日別集計 (当月分) <span style="font-size:12px;color:#64748b;font-weight:normal;">— 日付クリックで 日計表ビュー</span></h2>
+<table style="font-size:12px;max-width:920px;">
+  <thead><tr>
+    <th>日付</th>
+    <th class="num">件数</th>
+    <th class="num">調剤報酬<br>(円)</th>
+    <th class="num">振込参考<br>(保険→薬局)</th>
+    <th class="num">保険内請求<br>(患者)</th>
+    <th class="num">保険外<br>(選定療養)</th>
+    <th class="num">自費<br>(円)</th>
+  </tr></thead>
   <tbody>
   {daily_rows}
   </tbody>
 </table>
+
+<!-- 日計表ビュー モーダル -->
+<div id="daily-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;padding:24px;overflow:auto;">
+  <div style="max-width:1000px;margin:auto;background:white;border-radius:8px;padding:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #e2e8f0;padding-bottom:10px;">
+      <h3 id="daily-modal-title" style="margin:0;font-size:16px;">日計表</h3>
+      <button onclick="document.getElementById('daily-modal').style.display='none';" style="padding:4px 12px;font-size:14px;cursor:pointer;">閉じる ✕</button>
+    </div>
+    <div id="daily-modal-body" style="margin-top:12px;font-size:12px;"></div>
+  </div>
+</div>
+
+<script>
+(function(){{
+  var rows = document.querySelectorAll('.daily-row');
+  var modal = document.getElementById('daily-modal');
+  var body = document.getElementById('daily-modal-body');
+  var title = document.getElementById('daily-modal-title');
+  rows.forEach(function(row){{
+    row.addEventListener('mouseenter', function(){{ row.style.background='#f1f5f9'; }});
+    row.addEventListener('mouseleave', function(){{ row.style.background=''; }});
+    row.addEventListener('click', function(){{
+      var d = row.getAttribute('data-date');
+      title.textContent = '日計表 ' + d.substring(0,4) + '-' + d.substring(4,6) + '-' + d.substring(6,8) + ' 読込中...';
+      body.innerHTML = '<div style="text-align:center;padding:40px;color:#64748b;">読込中...</div>';
+      modal.style.display = 'block';
+      var tok = new URLSearchParams(window.location.search).get('token');
+      var url = '/nsips-stats/stats/daily_receipts?date=' + d + (tok ? '&token=' + encodeURIComponent(tok) : '');
+      fetch(url)
+        .then(function(r){{ return r.json(); }})
+        .then(function(data){{
+          title.textContent = '日計表 ' + d.substring(0,4) + '-' + d.substring(4,6) + '-' + d.substring(6,8) + ' (' + data.rows.length + '件)';
+          var html = '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
+          html += '<thead style="background:#f8fafc;position:sticky;top:0;"><tr>';
+          html += '<th style="padding:6px;text-align:left;">時刻</th>';
+          html += '<th style="padding:6px;text-align:right;">保険点</th>';
+          html += '<th style="padding:6px;text-align:right;">負担金</th>';
+          html += '<th style="padding:6px;text-align:right;">保険外</th>';
+          html += '<th style="padding:6px;text-align:right;">自費</th>';
+          html += '<th style="padding:6px;text-align:right;">入金額</th>';
+          html += '<th style="padding:6px;text-align:left;">区分</th>';
+          html += '</tr></thead><tbody>';
+          data.rows.forEach(function(r){{
+            html += '<tr style="border-bottom:1px solid #e5e7eb;">';
+            html += '<td style="padding:5px;">' + (r.time || '') + '</td>';
+            html += '<td style="padding:5px;text-align:right;">' + (r.points||0).toLocaleString() + '</td>';
+            html += '<td style="padding:5px;text-align:right;">' + (r.copay||0).toLocaleString() + '</td>';
+            html += '<td style="padding:5px;text-align:right;">' + (r.senteryoyo||0).toLocaleString() + '</td>';
+            html += '<td style="padding:5px;text-align:right;">' + (r.jihi||0).toLocaleString() + '</td>';
+            html += '<td style="padding:5px;text-align:right;">' + (r.total||0).toLocaleString() + '</td>';
+            html += '<td style="padding:5px;color:' + (r.kubun==='U'?'#dc2626':'#0f172a') + ';">' + (r.kubun||'') + '</td>';
+            html += '</tr>';
+          }});
+          html += '</tbody><tfoot style="background:#f8fafc;font-weight:700;"><tr>';
+          html += '<td style="padding:6px;">合計</td>';
+          html += '<td style="padding:6px;text-align:right;">' + data.total.points.toLocaleString() + '</td>';
+          html += '<td style="padding:6px;text-align:right;">' + data.total.copay.toLocaleString() + '</td>';
+          html += '<td style="padding:6px;text-align:right;">' + data.total.senteryoyo.toLocaleString() + '</td>';
+          html += '<td style="padding:6px;text-align:right;">' + data.total.jihi.toLocaleString() + '</td>';
+          html += '<td style="padding:6px;text-align:right;">' + data.total.total.toLocaleString() + '</td>';
+          html += '<td></td></tr></tfoot></table>';
+          body.innerHTML = html;
+        }})
+        .catch(function(e){{ body.innerHTML = '<div style="color:#dc2626;padding:20px;">読込エラー: ' + e + '</div>'; }});
+    }});
+  }});
+  modal.addEventListener('click', function(e){{ if(e.target===modal) modal.style.display='none'; }});
+}})();
+</script>
 
 <h2>薬剤別累計 (調剤回数上位 50 品目)</h2>
 <style>
@@ -2133,25 +2288,35 @@ def dashboard(
         main_label = f"今日 ({now:%m-%d})"
         cmp_label = f"昨日 ({(now - timedelta(days=1)):%m-%d})"
 
-    # 日別集計 (当月分のみ、dispense_date 優先)
+    # 日別集計 (当月分のみ、dispense_date 優先) — レセコン日計表 5区分
     _cur_ym = now.strftime("%Y%m")
     daily_data = conn.execute(
         f"""SELECT COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)) AS d,
                     COUNT(*) AS n,
                     COALESCE(SUM(total_points), 0) AS pts,
-                    COALESCE(SUM(patient_copay), 0) AS cp
+                    COALESCE(SUM(patient_copay), 0) AS cp,
+                    COALESCE(SUM(senteryoyo_fee_excl_tax), 0)
+                      + COALESCE(SUM(senteryoyo_tax), 0) AS sen,
+                    COALESCE(SUM(patient_copay_total), 0) AS cp_all
              FROM prescriptions
              WHERE SUBSTR(COALESCE(dispense_date, STRFTIME('%Y%m%d', detected_at)), 1, 6) = '{_cur_ym}'
              GROUP BY d
              ORDER BY d DESC"""
     ).fetchall()
     daily_rows_html = "\n".join(
-        f'<tr><td>{_h(r["d"])}</td>'
-        f'<td class="num">{r["n"]:,} 件</td>'
-        f'<td class="num">{r["pts"]:,} 点</td>'
-        f'<td class="num">{r["cp"]:,} 円</td></tr>'
+        (
+            f'<tr class="daily-row" data-date="{_h(r["d"])}" style="cursor:pointer;">'
+            f'<td>{_h(r["d"])}</td>'
+            f'<td class="num">{r["n"]:,}</td>'
+            f'<td class="num">{r["pts"] * 10:,}</td>'
+            f'<td class="num">{r["pts"] * 10 - r["cp"]:,}</td>'
+            f'<td class="num">{r["cp"]:,}</td>'
+            f'<td class="num">{r["sen"]:,}</td>'
+            f'<td class="num">{max(0, r["cp_all"] - r["cp"] - r["sen"]):,}</td>'
+            f'</tr>'
+        )
         for r in daily_data
-    ) or '<tr><td colspan="4">(データなし)</td></tr>'
+    ) or '<tr><td colspan="7">(データなし)</td></tr>'
 
     # record 5 全体集計の累計 (経営指標、期間フィルタ適用)
     t_agg = conn.execute(
