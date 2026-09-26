@@ -311,12 +311,7 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
     from db import update_mix_events_for_prescription
     update_mix_events_for_prescription(conn, presc_id)
     conn.commit()
-    # 新規データが入ったら dashboard キャッシュを破棄
-    global _DASHBOARD_CACHE
-    try:
-        _DASHBOARD_CACHE.clear()
-    except (NameError, AttributeError):
-        pass
+    # cache は時間ベース TTL のみで管理 (scan中の invalidation thrashing 回避)
     return IngestResponse(status="ok", prescription_id=presc_id)
 
 
@@ -2039,18 +2034,17 @@ def dashboard(
 
     conn = get_conn()
 
-    # ---- HTML キャッシュ (期間別+薬局別、行数変化で invalidate) ----
+    # ---- HTML キャッシュ (期間別+薬局別、時間ベース TTL のみ) ----
+    # 書き込み頻発時 (scan中など) に cache thrashing を避けるため 行数変化 invalidate は廃止
     import time as _time_mod
     global _DASHBOARD_CACHE
     try:
         _DASHBOARD_CACHE
     except NameError:
         _DASHBOARD_CACHE = {}
-    row_state = conn.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM prescriptions").fetchone()
-    cache_key = (period or "all", pharmacy or "all", row_state[0], row_state[1])
+    cache_key = (period or "all", pharmacy or "all")
     cached = _DASHBOARD_CACHE.get(cache_key)
-    # データ変化 (row_state) で invalidate されるので TTL は長めで OK
-    if cached and (_time_mod.time() - cached[0]) < 1800:  # 30分
+    if cached and (_time_mod.time() - cached[0]) < 300:  # 5分キャッシュ
         return HTMLResponse(content=cached[1])
 
     # ---- 期間フィルタ ----
