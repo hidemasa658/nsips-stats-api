@@ -69,6 +69,12 @@ def init_db(conn: sqlite3.Connection) -> None:
     presc_cols = [r[1] for r in conn.execute("PRAGMA table_info(prescriptions)").fetchall()]
     if "body_sanitized" not in presc_cols:
         conn.execute("ALTER TABLE prescriptions ADD COLUMN body_sanitized TEXT")
+    # 薬局識別 (VER ヘッダから抽出)
+    if "pharmacy_code" not in presc_cols:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN pharmacy_code TEXT")
+    if "pharmacy_name" not in presc_cols:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN pharmacy_name TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pres_pharmacy ON prescriptions(pharmacy_code)")
     if "dispense_date" not in presc_cols:
         conn.execute("ALTER TABLE prescriptions ADD COLUMN dispense_date TEXT")
     if "dispensed_at" not in presc_cols:

@@ -139,6 +139,17 @@ def _extract_dispense_date(body_sanitized: str) -> str | None:
     return None
 
 
+def _extract_pharmacy(body_sanitized: str) -> tuple[str | None, str | None]:
+    """VER ヘッダから 薬局コード [6] と 薬局名 [7] を抽出。"""
+    if not body_sanitized:
+        return None, None
+    first = body_sanitized.splitlines()[0] if body_sanitized else ""
+    parts = first.split(",")
+    if len(parts) >= 8 and parts[0].startswith("VER"):
+        return (parts[6] or None), (parts[7] or None)
+    return None, None
+
+
 def _delete_prescription_cascade(conn, pid: int) -> None:
     """prescription とその関連テーブル全てから 削除。"""
     for table in ("drugs", "fees", "rps", "drug_pricings", "mix_events"):
@@ -187,17 +198,19 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
                 return IngestResponse(status="superseded", prescription_id=matches[0][0])
 
     t = payload.totals
+    pharmacy_code, pharmacy_name = _extract_pharmacy(payload.body_sanitized or "")
     cur = conn.execute(
         """
         INSERT INTO prescriptions
           (source_id, detected_at, dispense_date, dispensed_at,
            body_sanitized, clinic_code_enc, clinic_name_enc,
            prescription_date_enc, doctor_name_enc,
+           pharmacy_code, pharmacy_name,
            total_points, drug_fee, dispensing_fee_total, pharmacy_mgmt_fee_total,
            dispensing_base_fee, dispensing_add_fee, drug_guidance_fee,
            pharmacy_mgmt_other, patient_copay, patient_copay_total,
            senteryoyo_fee_excl_tax, senteryoyo_tax)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payload.source_id,
@@ -209,6 +222,8 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
             payload.clinic_name_enc,
             payload.prescription_date_enc,
             payload.doctor_name_enc,
+            pharmacy_code,
+            pharmacy_name,
             t.total_points if t else None,
             t.drug_fee if t else None,
             t.dispensing_fee_total if t else None,
@@ -619,7 +634,18 @@ document.addEventListener('DOMContentLoaded', function() {{
   }}, 100);
 }});
 </script>
-<h1>💊 nsips-stats ダッシュボード <span style="font-size:14px;color:#64748b;font-weight:normal;">— {period_label}</span></h1>
+<h1>💊 nsips-stats ダッシュボード <span style="font-size:14px;color:#64748b;font-weight:normal;">— {pharmacy_label} · {period_label}</span></h1>
+
+<div style="margin:8px 0;">
+  <form method="get" style="display:inline-flex;gap:6px;align-items:center;">
+    <input type="hidden" name="token" value="{token_qs}">
+    <input type="hidden" name="period" value="{period}">
+    <label style="font-size:12px;color:#475569;">🏥 薬局:</label>
+    <select name="pharmacy" onchange="this.form.submit()" style="padding:5px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:5px;">
+      {pharmacy_options}
+    </select>
+  </form>
+</div>
 
 <style>
 .tabs {{ display: flex; gap: 4px; margin: 12px 0; flex-wrap: wrap; align-items: center; }}
@@ -636,10 +662,10 @@ document.addEventListener('DOMContentLoaded', function() {{
 .tabs button:hover {{ background: #e2e8f0; color: #0f172a; }}
 </style>
 <div class="tabs">
-  <a class="tab {tab_today}" href="?token={token_qs}&period=today" onclick="document.body.classList.add('tab-loading')">今日</a>
-  <a class="tab {tab_yesterday}" href="?token={token_qs}&period=yesterday" onclick="document.body.classList.add('tab-loading')">昨日</a>
-  <a class="tab {tab_month}" href="?token={token_qs}&period=month" onclick="document.body.classList.add('tab-loading')">今月</a>
-  <a class="tab {tab_all}" href="?token={token_qs}&period=all" onclick="document.body.classList.add('tab-loading')">全期間</a>
+  <a class="tab {tab_today}" href="?token={token_qs}&pharmacy={pharmacy}&period=today" onclick="document.body.classList.add('tab-loading')">今日</a>
+  <a class="tab {tab_yesterday}" href="?token={token_qs}&pharmacy={pharmacy}&period=yesterday" onclick="document.body.classList.add('tab-loading')">昨日</a>
+  <a class="tab {tab_month}" href="?token={token_qs}&pharmacy={pharmacy}&period=month" onclick="document.body.classList.add('tab-loading')">今月</a>
+  <a class="tab {tab_all}" href="?token={token_qs}&pharmacy={pharmacy}&period=all" onclick="document.body.classList.add('tab-loading')">全期間</a>
   <span class="sep"></span>
   <form method="get">
     <input type="hidden" name="token" value="{token_qs}">
@@ -2005,6 +2031,7 @@ def dashboard(
     x_api_token: str | None = Header(default=None),
     token: str | None = Query(default=None),
     period: str | None = Query(default="all"),  # all / today / yesterday / month / YYYYMM
+    pharmacy: str | None = Query(default="all"),  # all または 薬局コード
 ) -> HTMLResponse:
     provided = x_api_token or token
     if not API_TOKEN or provided != API_TOKEN:
@@ -2012,7 +2039,7 @@ def dashboard(
 
     conn = get_conn()
 
-    # ---- HTML キャッシュ (期間別、60 秒 TTL、行数変化で invalidate) ----
+    # ---- HTML キャッシュ (期間別+薬局別、行数変化で invalidate) ----
     import time as _time_mod
     global _DASHBOARD_CACHE
     try:
@@ -2020,7 +2047,7 @@ def dashboard(
     except NameError:
         _DASHBOARD_CACHE = {}
     row_state = conn.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM prescriptions").fetchone()
-    cache_key = (period or "all", row_state[0], row_state[1])
+    cache_key = (period or "all", pharmacy or "all", row_state[0], row_state[1])
     cached = _DASHBOARD_CACHE.get(cache_key)
     # データ変化 (row_state) で invalidate されるので TTL は長めで OK
     if cached and (_time_mod.time() - cached[0]) < 1800:  # 30分
@@ -2069,9 +2096,33 @@ def dashboard(
         period_label = "全期間"
         period = "all"
 
+    # ---- 薬局フィルタ ----
+    pharmacy_label = "全薬局"
+    if pharmacy and pharmacy != "all":
+        # SQL injection 防止: 数字のみ許可
+        if pharmacy.isdigit():
+            period_where = f"({period_where}) AND pharmacy_code = '{pharmacy}'"
+            pn = conn.execute(
+                "SELECT pharmacy_name FROM prescriptions WHERE pharmacy_code=? LIMIT 1", (pharmacy,)
+            ).fetchone()
+            pharmacy_label = pn[0] if pn else pharmacy
+
+    # 薬局セレクタ用: 全薬局リスト
+    pharmacies = conn.execute(
+        """SELECT pharmacy_code, MAX(pharmacy_name) AS pn, COUNT(*) n
+           FROM prescriptions WHERE pharmacy_code IS NOT NULL
+           GROUP BY pharmacy_code ORDER BY n DESC"""
+    ).fetchall()
+    pharmacy_options = '<option value="all">全薬局</option>' + "".join(
+        f'<option value="{p["pharmacy_code"]}"'
+        + (' selected' if pharmacy == p["pharmacy_code"] else '')
+        + f'>{_h(p["pn"] or p["pharmacy_code"])} ({p["n"]:,}件)</option>'
+        for p in pharmacies
+    )
+
     prescription_count = conn.execute(f"SELECT COUNT(*) FROM prescriptions WHERE {period_where}").fetchone()[0]
-    # period=all の時は prescriptions JOIN 不要 (drugs 単独で高速集計)
-    is_all_period = (period_where.strip() == "1=1")
+    # period=all かつ 薬局指定なし の時のみ prescriptions JOIN 不要
+    is_all_period = (period_where.strip() == "1=1") and (pharmacy in (None, "all"))
 
     if is_all_period:
         drug_kinds = conn.execute(
@@ -3023,6 +3074,10 @@ def dashboard(
         usage_kind_rows=usage_kind_rows_html,
         mix_breakdown_rows=mix_breakdown_rows_html,
         kanri_rows=kanri_rows_html,
+        pharmacy_options=pharmacy_options,
+        pharmacy_label=pharmacy_label,
+        pharmacy=pharmacy or "all",
+        period=period or "all",
         fee_rows=fee_rows_html,
         chiiki_charts=chiiki_charts_html,
         mix_total=mix_total,
