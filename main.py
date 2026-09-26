@@ -240,17 +240,20 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
             ),
         )
 
+    from nsips_parser import classify_usage
     for rp in payload.rps:
+        # client parser が古くて usage_kind 未指定でも サーバ側で判定
+        usage_kind = getattr(rp, "usage_kind", None) or classify_usage(rp.usage_text)
         conn.execute(
             """
             INSERT INTO rps
-              (prescription_id, rp_no, usage_code, usage_text, site_text,
+              (prescription_id, rp_no, usage_code, usage_text, usage_kind, site_text,
                is_mixed, drug_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                presc_id, rp.rp_no, rp.usage_code, rp.usage_text, rp.site_text,
-                1 if rp.is_mixed else 0, rp.drug_count,
+                presc_id, rp.rp_no, rp.usage_code, rp.usage_text, usage_kind,
+                rp.site_text, 1 if rp.is_mixed else 0, rp.drug_count,
             ),
         )
 
@@ -1128,6 +1131,18 @@ document.addEventListener('DOMContentLoaded', function() {{
   modal.addEventListener('click', function(e){{ if(e.target===modal) modal.style.display='none'; }});
 }})();
 </script>
+
+<h2>用法内訳 <span style="font-size:12px;color:#64748b;font-weight:normal;">({period_label})</span></h2>
+<table style="max-width:520px;font-size:13px;">
+  <thead><tr><th>用法区分</th><th class="num">剤数 (RP)</th><th class="num">構成比</th></tr></thead>
+  <tbody>{usage_kind_rows}</tbody>
+</table>
+
+<h2>計量混合加算 内訳 <span style="font-size:12px;color:#64748b;font-weight:normal;">({period_label})</span></h2>
+<table style="max-width:620px;font-size:13px;">
+  <thead><tr><th>区分</th><th>加算コード</th><th class="num">算定回数</th><th class="num">点数</th></tr></thead>
+  <tbody>{mix_breakdown_rows}</tbody>
+</table>
 
 <h2>薬剤別累計 (調剤回数上位 50 品目)</h2>
 <style>
@@ -2219,6 +2234,46 @@ def dashboard(
         )
     drug_rows_html = "\n".join(_drug_row(r) for r in drug_data) or '<tr><td colspan="6">(データなし)</td></tr>'
 
+    # 用法内訳 (rps.usage_kind ベース、期間フィルタ適用)
+    usage_kind_data = conn.execute(
+        f"""SELECT COALESCE(r.usage_kind, 'その他') AS kind, COUNT(*) AS n
+             FROM rps r JOIN prescriptions p ON r.prescription_id = p.id
+             WHERE {period_where}
+             GROUP BY kind"""
+    ).fetchall()
+    _kind_order = {"内服": 0, "頓服": 1, "外用": 2, "その他": 3}
+    usage_kind_data = sorted(usage_kind_data, key=lambda r: _kind_order.get(r["kind"], 99))
+    _uk_total = sum(r["n"] for r in usage_kind_data) or 1
+    usage_kind_rows_html = "\n".join(
+        f'<tr><td>{_h(r["kind"])}</td>'
+        f'<td class="num">{r["n"]:,}</td>'
+        f'<td class="num">{r["n"]*100/_uk_total:.1f} %</td></tr>'
+        for r in usage_kind_data
+    ) or '<tr><td colspan="3">(データなし)</td></tr>'
+
+    # 計量混合加算 内訳 (fees テーブル、コード別)
+    mix_breakdown_data = conn.execute(
+        f"""SELECT f.code, f.name, COUNT(*) AS n, SUM(f.points) AS pts
+             FROM fees f JOIN prescriptions p ON f.prescription_id = p.id
+             WHERE {period_where} AND f.name LIKE '%計量混合%'
+             GROUP BY f.code, f.name
+             ORDER BY n DESC"""
+    ).fetchall()
+    # コード → 区分 (内服 / 外用)
+    def _mix_kind(name: str, code: str) -> str:
+        if "散剤" in (name or "") or code == "430002870":
+            return "内服 (散剤・顆粒・液剤)"
+        if "軟" in (name or "") or "硬" in (name or ""):
+            return "外用 (軟・硬膏剤)"
+        return "その他"
+    mix_breakdown_rows_html = "\n".join(
+        f'<tr><td>{_h(_mix_kind(r["name"], r["code"]))}</td>'
+        f'<td>{_h(r["code"])} {_h(r["name"])}</td>'
+        f'<td class="num">{r["n"]:,}</td>'
+        f'<td class="num">{r["pts"]:,}</td></tr>'
+        for r in mix_breakdown_data
+    ) or '<tr><td colspan="4">(データなし)</td></tr>'
+
     # 成分別 累計 (YJ 1-7 桁)
     ingredient_data = conn.execute(
         """SELECT SUBSTR(d.yj_code, 1, 7) AS ingredient_code,
@@ -2920,6 +2975,8 @@ def dashboard(
         prescription_count=prescription_count,
         drug_kinds=drug_kinds,
         drug_rows=drug_rows_html,
+        usage_kind_rows=usage_kind_rows_html,
+        mix_breakdown_rows=mix_breakdown_rows_html,
         fee_rows=fee_rows_html,
         chiiki_charts=chiiki_charts_html,
         mix_total=mix_total,

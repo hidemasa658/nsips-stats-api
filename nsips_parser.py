@@ -92,6 +92,31 @@ def _extract_unit_price(fields: list[str]) -> float | None:
     return _to_float(_col(fields, 24))
 
 
+def classify_usage(usage_text: str | None) -> str:
+    """用法テキスト から 内服 / 頓服 / 外用 / その他 を判定。
+
+    NSIPS record 3 の usage_text からルールベース分類。
+    薬歴・レセコン風の集計に使う。
+    """
+    if not usage_text:
+        return "その他"
+    t = usage_text
+    # 頓服 (症状発現時のみ服用)
+    for kw in ("頓", "疼痛時", "発熱時", "症状出現", "不調時", "痛いとき"):
+        if kw in t:
+            return "頓服"
+    # 外用 (塗布・点眼・吸入 等)
+    for kw in ("塗布", "塗擦", "貼付", "貼", "点眼", "点鼻", "点耳",
+               "うがい", "含嗽", "吸入", "噴霧", "湿布", "外用", "使用"):
+        if kw in t:
+            return "外用"
+    # 内服 (定時服用)
+    if (t.startswith("分") or "食後" in t or "食前" in t or "食間" in t
+            or "寝る前" in t or "空腹時" in t or "服用" in t or "毎食" in t):
+        return "内服"
+    return "その他"
+
+
 def parse_nsips(body: str) -> dict:
     """NSIPS .txt をパースし、record 1 を除いた辞書を返す。
 
@@ -205,6 +230,7 @@ def parse_nsips(body: str) -> dict:
                 "rp_no": rp_no,
                 "usage_code": usage_code,
                 "usage_text": usage_text,
+                "usage_kind": classify_usage(usage_text),  # 内服/頓服/外用/その他
                 "site_text": site_text,
                 "days": days,
                 "times_per_day": times_per_day,

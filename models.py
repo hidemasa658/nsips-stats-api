@@ -21,6 +21,7 @@ class RpIn(BaseModel):
     rp_no: str | None = None
     usage_code: str | None = None
     usage_text: str | None = None
+    usage_kind: str | None = None  # 内服/頓服/外用/その他
     site_text: str | None = None
     is_mixed: bool = False
     drug_count: int = 0

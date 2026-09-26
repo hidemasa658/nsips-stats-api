@@ -129,12 +129,14 @@ def init_db(conn: sqlite3.Connection) -> None:
           rp_no TEXT,
           usage_code TEXT,
           usage_text TEXT,
+          usage_kind TEXT,  -- 内服/頓服/外用/その他
           site_text TEXT,
           is_mixed INTEGER DEFAULT 0,
           drug_count INTEGER DEFAULT 0,
           FOREIGN KEY (prescription_id) REFERENCES prescriptions(id)
         );
         CREATE INDEX IF NOT EXISTS idx_rps_mixed ON rps(is_mixed);
+        CREATE INDEX IF NOT EXISTS idx_rps_kind ON rps(usage_kind);
 
         -- 加算・料金 マスタ (厚労省 m*.csv から取り込み)
         CREATE TABLE IF NOT EXISTS fee_master (
