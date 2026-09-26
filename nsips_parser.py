@@ -305,18 +305,22 @@ def parse_nsips(body: str) -> dict:
     for rp in rps_by_no.values():
         result["rps"].append(rp)
 
-    # 内用の総数量 = 1回量 × 回数/日 × 日数
-    # 外用は quantity (position 16) が既に総処方量なのでそのまま
+    # 総数量の計算:
+    #   内服: record 4 [16] = 1日量, record 3 [10] = 日数 → 総量 = 1日量 × 日数
+    #   頓服: record 4 [16] = 1回量, record 3 [10] = 総回数 → 総量 = 1回量 × 総回数
+    #   → 内服/頓服 とも同じ計算式 (quantity × days)
+    #   外用/その他: quantity (position 16) が既に総処方量
     for d in result["drugs"]:
-        if d.get("form") in ("内用", "内服"):
-            rp = rps_by_no.get(d.get("rp_no") or "")
-            if rp and rp.get("times_per_day") and rp.get("days"):
+        rp = rps_by_no.get(d.get("rp_no") or "")
+        usage_kind = rp.get("usage_kind") if rp else None
+        if usage_kind in ("内服", "頓服"):
+            if rp and rp.get("days"):
                 try:
-                    d["total_quantity"] = float(d["quantity"]) * rp["times_per_day"] * rp["days"]
+                    d["total_quantity"] = float(d["quantity"]) * rp["days"]
                 except (TypeError, ValueError):
                     d["total_quantity"] = None
             else:
-                d["total_quantity"] = None
+                d["total_quantity"] = d.get("quantity")
         else:
             # 外用/その他: quantity がそのまま総量
             d["total_quantity"] = d.get("quantity")
