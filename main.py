@@ -114,6 +114,24 @@ def api_ask(
 from models import IngestPayload, IngestResponse  # noqa: E402
 
 
+def _extract_receipt_info(body_sanitized: str) -> tuple[str, str, str] | None:
+    """body_sanitized から record 2 の (受付番号, 枝番, 業務区分) を抽出。"""
+    if not body_sanitized:
+        return None
+    for line in body_sanitized.splitlines():
+        parts = line.split(",")
+        if parts and parts[0] == "2" and len(parts) >= 4:
+            return parts[1], parts[2], parts[3]
+    return None
+
+
+def _delete_prescription_cascade(conn, pid: int) -> None:
+    """prescription とその関連テーブル全てから 削除。"""
+    for table in ("drugs", "fees", "rps", "drug_pricings", "mix_events"):
+        conn.execute(f"DELETE FROM {table} WHERE prescription_id=?", (pid,))
+    conn.execute("DELETE FROM prescriptions WHERE id=?", (pid,))
+
+
 @app.post("/ingest", response_model=IngestResponse)
 def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestResponse:
     conn = get_conn()
@@ -122,6 +140,32 @@ def ingest(payload: IngestPayload, _: None = Depends(verify_token)) -> IngestRes
     ).fetchone()
     if row is not None:
         return IngestResponse(status="duplicate", prescription_id=row["id"])
+
+    # A/U 自動 dedup: 同じ (受付番号, 枝番, dispense_date) の既存レコードと突合
+    #   U 受信 → 既存 (A/U) 全削除 して自身を insert (訂正版で上書き)
+    #   A 受信 → 既存 (A/U) あれば skip (=既に反映済み)
+    receipt_info = _extract_receipt_info(payload.body_sanitized or "")
+    if receipt_info and payload.dispense_date:
+        uketuke, edaban, kubun = receipt_info
+        candidates = conn.execute(
+            "SELECT id, body_sanitized FROM prescriptions WHERE dispense_date=? AND body_sanitized IS NOT NULL",
+            (payload.dispense_date,),
+        ).fetchall()
+        matches = []
+        for r in candidates:
+            info = _extract_receipt_info(r["body_sanitized"])
+            if info and info[0] == uketuke and info[1] == edaban:
+                matches.append((r["id"], info[2]))
+
+        if matches:
+            if kubun == "U":
+                # 訂正版で上書き: 既存を全削除
+                for old_id, _ in matches:
+                    _delete_prescription_cascade(conn, old_id)
+            else:
+                # A 受信で既存あり → 既に反映済みなので skip
+                conn.commit()
+                return IngestResponse(status="superseded", prescription_id=matches[0][0])
 
     t = payload.totals
     cur = conn.execute(
