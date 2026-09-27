@@ -268,17 +268,18 @@ def _ingest_impl(payload: "IngestPayload") -> "IngestResponse":  # noqa: F821
 
     from nsips_parser import classify_usage
     for rp in payload.rps:
-        # client parser が古くて usage_kind 未指定でも サーバ側で判定
-        usage_kind = getattr(rp, "usage_kind", None) or classify_usage(rp.usage_text)
+        # client parser が古くて usage_kbn / usage_kind 未指定でも サーバ側で判定
+        usage_kbn = getattr(rp, "usage_kbn", None)
+        usage_kind = getattr(rp, "usage_kind", None) or classify_usage(rp.usage_text, usage_kbn)
         conn.execute(
             """
             INSERT INTO rps
-              (prescription_id, rp_no, usage_code, usage_text, usage_kind, site_text,
+              (prescription_id, rp_no, usage_code, usage_text, usage_kbn, usage_kind, site_text,
                days, times_per_day, is_mixed, drug_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                presc_id, rp.rp_no, rp.usage_code, rp.usage_text, usage_kind,
+                presc_id, rp.rp_no, rp.usage_code, rp.usage_text, usage_kbn, usage_kind,
                 rp.site_text, rp.days, rp.times_per_day,
                 1 if rp.is_mixed else 0, rp.drug_count,
             ),
@@ -2307,7 +2308,7 @@ def dashboard(
              WHERE {period_where}
              GROUP BY kind"""
     ).fetchall()
-    _kind_order = {"内服": 0, "頓服": 1, "外用": 2, "その他": 3}
+    _kind_order = {"内服": 0, "頓服": 1, "外用": 2, "注射": 3, "その他": 4}
     usage_kind_data = sorted(usage_kind_data, key=lambda r: _kind_order.get(r["kind"], 99))
     _uk_total = sum(r["n"] for r in usage_kind_data) or 1
     usage_kind_rows_html = "\n".join(

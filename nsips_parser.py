@@ -92,27 +92,32 @@ def _extract_unit_price(fields: list[str]) -> float | None:
     return _to_float(_col(fields, 24))
 
 
-def classify_usage(usage_text: str | None) -> str:
-    """用法テキスト から 内服 / 頓服 / 外用 / その他 を判定。
+def classify_usage(usage_text: str | None, usage_kbn: str | None = None) -> str:
+    """NSIPS record 3 から 内服 / 頓服 / 外用 / 注射 / その他 を判定。
 
-    NSIPS record 3 の usage_text からルールベース分類。
-    薬歴・レセコン風の集計に使う。
+    優先順位:
+      1. record 3 [8] 服用区分コード (NSIPS 標準、確実):
+         1=点眼(外用) / 2=内服 / 3=頓服 / 4=外用 / 5=注射
+      2. usage_text ベース (fallback、旧ロジック)
     """
+    if usage_kbn:
+        mapping = {"1": "外用", "2": "内服", "3": "頓服", "4": "外用", "5": "注射"}
+        if usage_kbn in mapping:
+            return mapping[usage_kbn]
+
     if not usage_text:
         return "その他"
     t = usage_text
-    # 頓服 (症状発現時のみ服用)
-    for kw in ("頓", "疼痛時", "発熱時", "症状出現", "不調時", "痛いとき"):
+    for kw in ("頓", "疼痛時", "発熱時", "症状出現", "不調時", "痛いとき", "頭痛時", "便秘時", "発作時"):
         if kw in t:
             return "頓服"
-    # 外用 (塗布・点眼・吸入 等)
     for kw in ("塗布", "塗擦", "貼付", "貼", "点眼", "点鼻", "点耳",
                "うがい", "含嗽", "吸入", "噴霧", "湿布", "外用", "使用"):
         if kw in t:
             return "外用"
-    # 内服 (定時服用)
     if (t.startswith("分") or "食後" in t or "食前" in t or "食間" in t
-            or "寝る前" in t or "空腹時" in t or "服用" in t or "毎食" in t):
+            or "寝る前" in t or "就寝前" in t or "起床時" in t
+            or "空腹時" in t or "服用" in t or "毎食" in t):
         return "内服"
     return "その他"
 
@@ -223,6 +228,7 @@ def parse_nsips(body: str) -> dict:
             usage_code = _col(fields, 2)
             usage_text = _col(fields, 3)
             site_text = _col(fields, 5)  # 「混合」等
+            usage_kbn = _col(fields, 8)  # NSIPS 服用区分 (1=点眼/2=内服/3=頓服/4=外用/5=注射)
             days = _to_int(_col(fields, 10))          # 日数
             times_per_day = _to_int(_col(fields, 11))  # 1日の回数
             is_mixed_marker = site_text == "混合"
@@ -230,7 +236,8 @@ def parse_nsips(body: str) -> dict:
                 "rp_no": rp_no,
                 "usage_code": usage_code,
                 "usage_text": usage_text,
-                "usage_kind": classify_usage(usage_text),  # 内服/頓服/外用/その他
+                "usage_kbn": usage_kbn,
+                "usage_kind": classify_usage(usage_text, usage_kbn),  # 内服/頓服/外用/注射/その他
                 "site_text": site_text,
                 "days": days,
                 "times_per_day": times_per_day,

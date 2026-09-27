@@ -21,7 +21,8 @@ class RpIn(BaseModel):
     rp_no: str | None = None
     usage_code: str | None = None
     usage_text: str | None = None
-    usage_kind: str | None = None  # 内服/頓服/外用/その他
+    usage_kbn: str | None = None     # NSIPS record 3 [8] 服用区分 (1-5)
+    usage_kind: str | None = None  # 内服/頓服/外用/注射/その他
     site_text: str | None = None
     days: int | None = None          # 処方日数
     times_per_day: int | None = None

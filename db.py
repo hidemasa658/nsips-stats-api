@@ -135,7 +135,8 @@ def init_db(conn: sqlite3.Connection) -> None:
           rp_no TEXT,
           usage_code TEXT,
           usage_text TEXT,
-          usage_kind TEXT,  -- 内服/頓服/外用/その他
+          usage_kbn TEXT,   -- NSIPS record 3 [8] 服用区分 (1=点眼/2=内服/3=頓服/4=外用/5=注射)
+          usage_kind TEXT,  -- 内服/頓服/外用/注射/その他
           site_text TEXT,
           days INTEGER,          -- 処方日数 (調剤管理料判定用)
           times_per_day INTEGER, -- 1日回数
@@ -145,6 +146,20 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_rps_mixed ON rps(is_mixed);
         CREATE INDEX IF NOT EXISTS idx_rps_kind ON rps(usage_kind);
+        """
+    )
+    # rps に後付けカラム (既存DB との互換のため ALTER)
+    rps_cols = [r[1] for r in conn.execute("PRAGMA table_info(rps)").fetchall()]
+    for col, coldef in [
+        ("usage_kind", "TEXT"),
+        ("usage_kbn", "TEXT"),
+        ("days", "INTEGER"),
+        ("times_per_day", "INTEGER"),
+    ]:
+        if col not in rps_cols:
+            conn.execute(f"ALTER TABLE rps ADD COLUMN {col} {coldef}")
+    conn.executescript(
+        """
 
         -- 加算・料金 マスタ (厚労省 m*.csv から取り込み)
         CREATE TABLE IF NOT EXISTS fee_master (
