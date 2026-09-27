@@ -156,6 +156,19 @@ def _extract_pharmacy(body_sanitized: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _extract_record2_fields(body_sanitized: str) -> tuple[str | None, str | None]:
+    """record 2 から 診療科 [19] と かかりつけ薬剤師名 [26] を抽出。"""
+    if not body_sanitized:
+        return None, None
+    for line in body_sanitized.splitlines():
+        parts = line.split(",")
+        if parts and parts[0] == "2" and len(parts) > 26:
+            department = parts[19] if parts[19] else None
+            pharmacist = parts[26] if parts[26] else None
+            return department, pharmacist
+    return None, None
+
+
 def _delete_prescription_cascade(conn, pid: int) -> None:
     """prescription とその関連テーブル全てから 削除。"""
     for table in ("drugs", "fees", "rps", "drug_pricings", "mix_events"):
@@ -210,18 +223,19 @@ def _ingest_impl(payload: "IngestPayload") -> "IngestResponse":  # noqa: F821
 
     t = payload.totals
     pharmacy_code, pharmacy_name = _extract_pharmacy(payload.body_sanitized or "")
+    department, pharmacist_name = _extract_record2_fields(payload.body_sanitized or "")
     cur = conn.execute(
         """
         INSERT INTO prescriptions
           (source_id, detected_at, dispense_date, dispensed_at,
            body_sanitized, clinic_code_enc, clinic_name_enc,
            prescription_date_enc, doctor_name_enc,
-           pharmacy_code, pharmacy_name,
+           pharmacy_code, pharmacy_name, department, pharmacist_name,
            total_points, drug_fee, dispensing_fee_total, pharmacy_mgmt_fee_total,
            dispensing_base_fee, dispensing_add_fee, drug_guidance_fee,
            pharmacy_mgmt_other, patient_copay, patient_copay_total,
            senteryoyo_fee_excl_tax, senteryoyo_tax)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payload.source_id,
@@ -235,6 +249,8 @@ def _ingest_impl(payload: "IngestPayload") -> "IngestResponse":  # noqa: F821
             payload.doctor_name_enc,
             pharmacy_code,
             pharmacy_name,
+            department,
+            pharmacist_name,
             t.total_points if t else None,
             t.drug_fee if t else None,
             t.dispensing_fee_total if t else None,
@@ -1165,6 +1181,18 @@ document.addEventListener('DOMContentLoaded', function() {{
   modal.addEventListener('click', function(e){{ if(e.target===modal) modal.style.display='none'; }});
 }})();
 </script>
+
+<h2>診療科 内訳 <span style="font-size:12px;color:#64748b;font-weight:normal;">({period_label})</span></h2>
+<table style="max-width:520px;font-size:13px;">
+  <thead><tr><th>診療科</th><th class="num">件数</th><th class="num">構成比</th></tr></thead>
+  <tbody>{dept_rows}</tbody>
+</table>
+
+<h2>かかりつけ薬剤師 実績 <span style="font-size:12px;color:#64748b;font-weight:normal;">({period_label})</span></h2>
+<table style="max-width:640px;font-size:13px;">
+  <thead><tr><th>薬剤師</th><th class="num">担当処方</th><th class="num">保険点数</th></tr></thead>
+  <tbody>{pharmacist_rows}</tbody>
+</table>
 
 <h2>用法内訳 <span style="font-size:12px;color:#64748b;font-weight:normal;">({period_label})</span></h2>
 <table style="max-width:520px;font-size:13px;">
@@ -2301,6 +2329,34 @@ def dashboard(
         )
     drug_rows_html = "\n".join(_drug_row(r) for r in drug_data) or '<tr><td colspan="6">(データなし)</td></tr>'
 
+    # 診療科 内訳
+    dept_data = conn.execute(
+        f"""SELECT COALESCE(NULLIF(department,''), '(未設定)') AS dept, COUNT(*) AS n
+             FROM prescriptions WHERE {period_where}
+             GROUP BY dept ORDER BY n DESC LIMIT 15"""
+    ).fetchall()
+    _dept_total = sum(r["n"] for r in dept_data) or 1
+    dept_rows_html = "\n".join(
+        f'<tr><td>{_h(r["dept"])}</td>'
+        f'<td class="num">{r["n"]:,}</td>'
+        f'<td class="num">{r["n"]*100/_dept_total:.1f} %</td></tr>'
+        for r in dept_data
+    ) or '<tr><td colspan="3">(データなし)</td></tr>'
+
+    # かかりつけ薬剤師 実績
+    pharm_data = conn.execute(
+        f"""SELECT pharmacist_name, COUNT(*) AS n, COALESCE(SUM(total_points), 0) AS pts
+             FROM prescriptions WHERE {period_where}
+               AND pharmacist_name IS NOT NULL AND pharmacist_name != ''
+             GROUP BY pharmacist_name ORDER BY n DESC"""
+    ).fetchall()
+    pharmacist_rows_html = "\n".join(
+        f'<tr><td>{_h(r["pharmacist_name"])}</td>'
+        f'<td class="num">{r["n"]:,}</td>'
+        f'<td class="num">{r["pts"]:,}</td></tr>'
+        for r in pharm_data
+    ) or '<tr><td colspan="3">(該当なし)</td></tr>'
+
     # 用法内訳 (rps.usage_kind ベース、期間フィルタ適用)
     usage_kind_data = conn.execute(
         f"""SELECT COALESCE(r.usage_kind, 'その他') AS kind, COUNT(*) AS n
@@ -3080,6 +3136,8 @@ def dashboard(
         usage_kind_rows=usage_kind_rows_html,
         mix_breakdown_rows=mix_breakdown_rows_html,
         kanri_rows=kanri_rows_html,
+        dept_rows=dept_rows_html,
+        pharmacist_rows=pharmacist_rows_html,
         pharmacy_options=pharmacy_options,
         pharmacy_label=pharmacy_label,
         pharmacy=pharmacy or "all",

@@ -74,7 +74,14 @@ def init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE prescriptions ADD COLUMN pharmacy_code TEXT")
     if "pharmacy_name" not in presc_cols:
         conn.execute("ALTER TABLE prescriptions ADD COLUMN pharmacy_name TEXT")
+    # 診療科 + かかりつけ薬剤師 (record 2 [19] / [26])
+    if "department" not in presc_cols:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN department TEXT")
+    if "pharmacist_name" not in presc_cols:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN pharmacist_name TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_pres_pharmacy ON prescriptions(pharmacy_code)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pres_dept ON prescriptions(department)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pres_pharmacist ON prescriptions(pharmacist_name)")
     if "dispense_date" not in presc_cols:
         conn.execute("ALTER TABLE prescriptions ADD COLUMN dispense_date TEXT")
     if "dispensed_at" not in presc_cols:

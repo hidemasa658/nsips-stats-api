@@ -209,11 +209,16 @@ def parse_nsips(body: str) -> dict:
         elif rec == "2":
             presc_date = _col(fields, 4)
             dispensed_date = _col(fields, 7)  # 実際の調剤日 (処方日と異なる可能性)
+            department = _col(fields, 19)     # 診療科 (皮膚科・小児科等)
+            doctor_name = _col(fields, 24)
+            pharmacist_name = _col(fields, 26)  # かかりつけ薬剤師名 (100% 相関 実証済)
             result["prescription"] = {
                 "prescription_date": presc_date,
                 "clinic_code": _col(fields, 12),
                 "clinic_name": _col(fields, 14),
-                "doctor_name": None,
+                "department": department,
+                "doctor_name": doctor_name,
+                "pharmacist_name": pharmacist_name,
             }
             # dispense_date は record 2 [7] (調剤日) を優先。
             # レセコン日計表と整合させるため、処方日ではなく調剤日で分類。
