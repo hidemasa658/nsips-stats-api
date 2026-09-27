@@ -231,7 +231,10 @@ def parse_nsips(body: str) -> dict:
             usage_kbn = _col(fields, 8)  # NSIPS 服用区分 (1=点眼/2=内服/3=頓服/4=外用/5=注射)
             days = _to_int(_col(fields, 10))          # 日数
             times_per_day = _to_int(_col(fields, 11))  # 1日の回数
-            is_mixed_marker = site_text == "混合"
+            # 計量混合対象剤: NSIPS [13]=2 で確定 (外用+内服両方カバー)
+            # site_text=混合 は 外用のみ検出、[13]=2 は 内服の散剤混合等も含む
+            mix_flag = _col(fields, 13)
+            is_mixed_marker = mix_flag == "2" or site_text == "混合"
             rps_by_no[rp_no or ""] = {
                 "rp_no": rp_no,
                 "usage_code": usage_code,
