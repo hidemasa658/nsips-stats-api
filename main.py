@@ -2495,6 +2495,48 @@ def dashboard(
         cmp_agg = _kpi_by_where(_by_month(this_month_))
         main_label = "全期間 (累計)"
         cmp_label = f"今月 ({now:%Y-%m})"
+    elif period and len(period) == 10 and period[4] == "-" and period[7] == "-":
+        # YYYY-MM-DD (input date picker)
+        ymd = period.replace("-", "")
+        # 前日を cmp に
+        from datetime import datetime as _dt
+        d_dt = _dt.strptime(ymd, "%Y%m%d")
+        d_prev = (d_dt - timedelta(days=1)).strftime("%Y%m%d")
+        main_agg = _kpi_by_where(_by_date(ymd))
+        cmp_agg = _kpi_by_where(_by_date(d_prev))
+        main_label = period
+        cmp_label = (d_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+    elif period and len(period) == 7 and period[4] == "-":
+        # YYYY-MM (input month picker) ← 8月選択時 ここ
+        ym = period.replace("-", "")
+        from datetime import datetime as _dt
+        y_int, m_int = int(period[:4]), int(period[5:7])
+        prev_m = m_int - 1 if m_int > 1 else 12
+        prev_y = y_int if m_int > 1 else y_int - 1
+        prev_ym = f"{prev_y:04d}{prev_m:02d}"
+        main_agg = _kpi_by_where(_by_month(ym))
+        cmp_agg = _kpi_by_where(_by_month(prev_ym))
+        main_label = period
+        cmp_label = f"{prev_y:04d}-{prev_m:02d}"
+    elif period and len(period) == 8 and period.isdigit():
+        # YYYYMMDD (旧形式)
+        from datetime import datetime as _dt
+        d_dt = _dt.strptime(period, "%Y%m%d")
+        d_prev = (d_dt - timedelta(days=1)).strftime("%Y%m%d")
+        main_agg = _kpi_by_where(_by_date(period))
+        cmp_agg = _kpi_by_where(_by_date(d_prev))
+        main_label = f"{period[:4]}-{period[4:6]}-{period[6:8]}"
+        cmp_label = (d_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+    elif period and len(period) == 6 and period.isdigit():
+        # YYYYMM
+        y_int, m_int = int(period[:4]), int(period[4:6])
+        prev_m = m_int - 1 if m_int > 1 else 12
+        prev_y = y_int if m_int > 1 else y_int - 1
+        prev_ym = f"{prev_y:04d}{prev_m:02d}"
+        main_agg = _kpi_by_where(_by_month(period))
+        cmp_agg = _kpi_by_where(_by_month(prev_ym))
+        main_label = f"{period[:4]}-{period[4:6]}"
+        cmp_label = f"{prev_y:04d}-{prev_m:02d}"
     else:  # today (default)
         main_agg = _kpi_by_where(_by_date(today_str_))
         cmp_agg = _kpi_by_where(_by_date(yday_str))
