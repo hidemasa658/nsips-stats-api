@@ -2019,11 +2019,14 @@ def _daily_report_kwargs(conn, period_where: str, prescription_count: int) -> di
     sy_excl = row["sy_excl"] or 0
     sy_tax = row["sy_tax"] or 0
     copay_total = row["copay_total"] or 0
-    hoken_yen = total_yen - copay  # 保険内請求額 = 総額 - 患者負担
-    gaihoken_yen = sy_excl  # 保険外請求 = 選定療養費 税抜
-    zei_yen = sy_tax        # 外税 = 選定療養費 消費税
-    nyukin_yen = copay_total  # 入金額 = 総患者負担 (保険内 + 選定療養)
-    furikomi_yen = hoken_yen  # 振込参考金額 = 保険内請求 (簡易)
+    # レセコン用語 との整合 (2026-09-28 修正):
+    #  保険内請求金額 = 患者が保険内で窓口で払う金額 (=SUM(patient_copay), record 5 [13])
+    #  振込参考金額   = 保険から薬局に振り込まれる分 (=総点数×10 - 患者負担)
+    hoken_yen = copay                    # 保険内請求額 = 患者負担 (保険内のみ)
+    furikomi_yen = total_yen - copay     # 振込参考金額 = 保険からの振込
+    gaihoken_yen = sy_excl               # 保険外請求 = 選定療養費 税抜
+    zei_yen = sy_tax                     # 外税 = 選定療養費 消費税
+    nyukin_yen = copay_total             # 入金額 = 総患者負担 (保険内 + 選定療養 + 自費)
 
     # ハイリスク受付回数 (特薬管加算3 = 440020570)
     hirisk = conn.execute(
