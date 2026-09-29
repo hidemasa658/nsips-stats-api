@@ -671,33 +671,53 @@ document.addEventListener('DOMContentLoaded', function() {{
 </div>
 
 <style>
-.tabs {{ display: flex; gap: 4px; margin: 12px 0; flex-wrap: wrap; align-items: center; }}
-.tab {{ padding: 6px 12px; background: #f1f5f9; color: #475569; border-radius: 5px; text-decoration: none; font-size: 12px; font-weight: 500; transition: all 0.15s; }}
-.tab:hover {{ background: #e2e8f0; color: #0f172a; }}
-.tab.active {{ background: #3b82f6; color: white; }}
-.tabs .sep {{ width: 1px; height: 20px; background: #cbd5e1; margin: 0 4px; }}
-.tabs input[type="date"], .tabs input[type="month"] {{
+.period-bar {{ display: flex; gap: 14px; margin: 12px 0; flex-wrap: wrap; align-items: center;
+  padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }}
+.period-bar-label {{ font-size: 12px; color: #475569; font-weight: 600; }}
+.period-bar .preset-group {{ display: inline-flex; gap: 4px; align-items: center; }}
+.period-bar .tab {{ padding: 6px 12px; background: #fff; color: #475569; border-radius: 5px;
+  text-decoration: none; font-size: 12px; font-weight: 500; transition: all 0.15s; border: 1px solid #e2e8f0; }}
+.period-bar .tab:hover {{ background: #eef2ff; color: #0f172a; border-color: #cbd5e1; }}
+.period-bar .tab.active {{ background: #3b82f6; color: white; border-color: #3b82f6; }}
+.period-bar .divider {{ width: 1px; height: 22px; background: #cbd5e1; }}
+.period-bar .pick-group {{ display: inline-flex; gap: 6px; align-items: center; }}
+.period-bar .pick-group form {{ display: inline-flex; gap: 4px; align-items: center; margin: 0; }}
+.period-bar .pick-label {{ font-size: 11px; color: #64748b; white-space: nowrap; }}
+.period-bar input[type="date"], .period-bar input[type="month"] {{
   padding: 5px 8px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 5px;
   background: #fff; color: #0f172a; font-family: inherit;
 }}
-.tabs form {{ display: inline-flex; gap: 4px; align-items: center; margin: 0; }}
-.tabs button {{ padding: 5px 10px; background: #f1f5f9; color: #475569; border: none; border-radius: 5px; font-size: 12px; cursor: pointer; }}
-.tabs button:hover {{ background: #e2e8f0; color: #0f172a; }}
+@media (max-width: 720px) {{
+  .period-bar {{ gap: 8px; padding: 10px; }}
+  .period-bar .divider {{ display: none; }}
+}}
 </style>
-<div class="tabs">
-  <a class="tab {tab_today}" href="?token={token_qs}&pharmacy={pharmacy}&period=today" onclick="document.body.classList.add('tab-loading')">今日</a>
-  <a class="tab {tab_yesterday}" href="?token={token_qs}&pharmacy={pharmacy}&period=yesterday" onclick="document.body.classList.add('tab-loading')">昨日</a>
-  <a class="tab {tab_month}" href="?token={token_qs}&pharmacy={pharmacy}&period=month" onclick="document.body.classList.add('tab-loading')">今月</a>
-  <a class="tab {tab_all}" href="?token={token_qs}&pharmacy={pharmacy}&period=all" onclick="document.body.classList.add('tab-loading')">全期間</a>
-  <span class="sep"></span>
-  <form method="get">
-    <input type="hidden" name="token" value="{token_qs}">
-    <input type="date" name="period" value="{picker_date}" onchange="this.form.submit()">
-  </form>
-  <form method="get">
-    <input type="hidden" name="token" value="{token_qs}">
-    <input type="month" name="period" value="{picker_month}" onchange="this.form.submit()">
-  </form>
+<div class="period-bar">
+  <span class="period-bar-label">📅 期間</span>
+  <div class="preset-group">
+    <a class="tab {tab_today}" href="?token={token_qs}&pharmacy={pharmacy}&period=today" onclick="document.body.classList.add('tab-loading')">今日</a>
+    <a class="tab {tab_yesterday}" href="?token={token_qs}&pharmacy={pharmacy}&period=yesterday" onclick="document.body.classList.add('tab-loading')">昨日</a>
+    <a class="tab {tab_month}" href="?token={token_qs}&pharmacy={pharmacy}&period=month" onclick="document.body.classList.add('tab-loading')">今月</a>
+    <a class="tab {tab_last_month}" href="?token={token_qs}&pharmacy={pharmacy}&period={last_month_iso}" onclick="document.body.classList.add('tab-loading')">先月</a>
+    <a class="tab {tab_all}" href="?token={token_qs}&pharmacy={pharmacy}&period=all" onclick="document.body.classList.add('tab-loading')">全期間</a>
+  </div>
+  <span class="divider"></span>
+  <div class="pick-group">
+    <span class="pick-label">日で指定:</span>
+    <form method="get">
+      <input type="hidden" name="token" value="{token_qs}">
+      <input type="hidden" name="pharmacy" value="{pharmacy}">
+      <input type="date" name="period" value="{picker_date}" onchange="this.form.submit()">
+    </form>
+  </div>
+  <div class="pick-group">
+    <span class="pick-label">月で指定:</span>
+    <form method="get">
+      <input type="hidden" name="token" value="{token_qs}">
+      <input type="hidden" name="pharmacy" value="{pharmacy}">
+      <input type="month" name="period" value="{picker_month}" onchange="this.form.submit()">
+    </form>
+  </div>
 </div>
 
 <style>
@@ -3221,6 +3241,8 @@ def dashboard(
         tab_yesterday="active" if period == "yesterday" else "",
         tab_month="active" if period == "month" else "",
         tab_all="active" if period == "all" else "",
+        tab_last_month="active" if (period or "") == last_month_dt.strftime("%Y-%m") else "",
+        last_month_iso=last_month_dt.strftime("%Y-%m"),
         picker_date=(picker_date_val or now.strftime("%Y-%m-%d")),
         picker_month=(picker_month_val or now.strftime("%Y-%m")),
         dp_total_dispensing=dp_total_dispensing,
