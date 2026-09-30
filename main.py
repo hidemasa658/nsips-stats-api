@@ -2380,10 +2380,11 @@ def dashboard(
         for r in pharm_data
     ) or '<tr><td colspan="3">(該当なし)</td></tr>'
 
-    # 用法内訳 (診療報酬「1剤」定義):
-    #   内服: (処方, usage_code, dosage_form_code) 単位 = 同用法+同剤形 で 1剤
-    #   頓服: rp単位 (=1銘柄1剤 原則) — 現状の rps 行数
-    #   外用: (処方, usage_code, site_text) 単位 = 同用法+同部位 で 1剤
+    # 用法内訳 (診療報酬「1剤」定義、レセコン集計と整合):
+    #   内服: (処方, usage_code, dosage_form_code) 単位 (同用法+同剤形)
+    #   内滴: rp単位 (NSIPS record 3 [8]=1、内服用滴剤 例:ラキソベロン)
+    #   頓服: rp単位 (1銘柄1剤 原則)
+    #   外用: (処方, usage_code, site_text) 単位 (同用法+同部位)
     #   注射: rp単位
     _uk_naifuku = conn.execute(f"""
         SELECT COUNT(*) FROM (
@@ -2392,6 +2393,9 @@ def dashboard(
           LEFT JOIN drugs d ON d.prescription_id=r.prescription_id AND d.rp_no=r.rp_no
           WHERE {period_where} AND r.usage_kind='内服'
         )""").fetchone()[0]
+    _uk_naiteki = conn.execute(f"""
+        SELECT COUNT(*) FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
+        WHERE {period_where} AND r.usage_kind='内滴'""").fetchone()[0]
     _uk_ton = conn.execute(f"""
         SELECT COUNT(*) FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
         WHERE {period_where} AND r.usage_kind='頓服'""").fetchone()[0]
@@ -2410,6 +2414,7 @@ def dashboard(
 
     usage_kind_data = [
         {"kind": "内服", "n": _uk_naifuku},
+        {"kind": "内滴", "n": _uk_naiteki},
         {"kind": "頓服", "n": _uk_ton},
         {"kind": "外用", "n": _uk_ext},
         {"kind": "注射", "n": _uk_inj},

@@ -93,15 +93,18 @@ def _extract_unit_price(fields: list[str]) -> float | None:
 
 
 def classify_usage(usage_text: str | None, usage_kbn: str | None = None) -> str:
-    """NSIPS record 3 から 内服 / 頓服 / 外用 / 注射 / その他 を判定。
+    """NSIPS record 3 から 内服 / 内滴 / 頓服 / 外用 / 注射 / その他 を判定。
 
     優先順位:
       1. record 3 [8] 服用区分コード (NSIPS 標準、確実):
-         1=点眼(外用) / 2=内服 / 3=頓服 / 4=外用 / 5=注射
+         1=内滴(内服用滴剤) / 2=内服 / 3=頓服 / 4=外用 / 5=注射
       2. usage_text ベース (fallback、旧ロジック)
+
+    Note: [8]=1 は 以前 点眼(外用)と誤認していたが、実は「内滴」
+    (例: ラキソベロン内用液、ピコスルファート液)。2026-09-30 修正。
     """
     if usage_kbn:
-        mapping = {"1": "外用", "2": "内服", "3": "頓服", "4": "外用", "5": "注射"}
+        mapping = {"1": "内滴", "2": "内服", "3": "頓服", "4": "外用", "5": "注射"}
         if usage_kbn in mapping:
             return mapping[usage_kbn]
 
