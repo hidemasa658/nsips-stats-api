@@ -2380,15 +2380,42 @@ def dashboard(
         for r in pharm_data
     ) or '<tr><td colspan="3">(該当なし)</td></tr>'
 
-    # 用法内訳 (rps.usage_kind ベース、期間フィルタ適用)
-    usage_kind_data = conn.execute(
-        f"""SELECT COALESCE(r.usage_kind, 'その他') AS kind, COUNT(*) AS n
-             FROM rps r JOIN prescriptions p ON r.prescription_id = p.id
-             WHERE {period_where}
-             GROUP BY kind"""
-    ).fetchall()
-    _kind_order = {"内服": 0, "頓服": 1, "外用": 2, "注射": 3, "その他": 4}
-    usage_kind_data = sorted(usage_kind_data, key=lambda r: _kind_order.get(r["kind"], 99))
+    # 用法内訳 (診療報酬「1剤」定義):
+    #   内服: (処方, usage_code, dosage_form_code) 単位 = 同用法+同剤形 で 1剤
+    #   頓服: rp単位 (=1銘柄1剤 原則) — 現状の rps 行数
+    #   外用: (処方, usage_code, site_text) 単位 = 同用法+同部位 で 1剤
+    #   注射: rp単位
+    _uk_naifuku = conn.execute(f"""
+        SELECT COUNT(*) FROM (
+          SELECT DISTINCT r.prescription_id, r.usage_code, d.dosage_form_code
+          FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
+          LEFT JOIN drugs d ON d.prescription_id=r.prescription_id AND d.rp_no=r.rp_no
+          WHERE {period_where} AND r.usage_kind='内服'
+        )""").fetchone()[0]
+    _uk_ton = conn.execute(f"""
+        SELECT COUNT(*) FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
+        WHERE {period_where} AND r.usage_kind='頓服'""").fetchone()[0]
+    _uk_ext = conn.execute(f"""
+        SELECT COUNT(*) FROM (
+          SELECT DISTINCT r.prescription_id, r.usage_code, r.site_text
+          FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
+          WHERE {period_where} AND r.usage_kind='外用'
+        )""").fetchone()[0]
+    _uk_inj = conn.execute(f"""
+        SELECT COUNT(*) FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
+        WHERE {period_where} AND r.usage_kind='注射'""").fetchone()[0]
+    _uk_other = conn.execute(f"""
+        SELECT COUNT(*) FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
+        WHERE {period_where} AND (r.usage_kind='その他' OR r.usage_kind IS NULL)""").fetchone()[0]
+
+    usage_kind_data = [
+        {"kind": "内服", "n": _uk_naifuku},
+        {"kind": "頓服", "n": _uk_ton},
+        {"kind": "外用", "n": _uk_ext},
+        {"kind": "注射", "n": _uk_inj},
+        {"kind": "その他", "n": _uk_other},
+    ]
+    usage_kind_data = [r for r in usage_kind_data if r["n"] > 0]
     _uk_total = sum(r["n"] for r in usage_kind_data) or 1
     usage_kind_rows_html = "\n".join(
         f'<tr><td>{_h(r["kind"])}</td>'
