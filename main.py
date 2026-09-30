@@ -2445,10 +2445,14 @@ def dashboard(
     ).fetchall()
     from collections import Counter as _Counter
     kanri_cnt = _Counter(r["kanri_kind"] for r in kanri_rows)
+    # 令和6年度改定 コード (fee_master 検証済み):
+    #  440023210 管理料1 長期 = 60点
+    #  440023110 管理料1 短期 = 10点
+    #  440011910 管理料2      = 4点  (以前 10点と推定していたバグ修正)
     _rows = [
         ("調剤管理料1 (内服・長期 28日以上)", "60 点", kanri_cnt.get("管理料1_長期", 0), 60),
         ("調剤管理料1 (内服・短期 27日以下)", "10 点", kanri_cnt.get("管理料1_短期", 0), 10),
-        ("調剤管理料2 (内服なし)",           "10 点", kanri_cnt.get("管理料2",     0), 10),
+        ("調剤管理料2 (内服なし)",           "4 点",  kanri_cnt.get("管理料2",     0), 4),
     ]
     kanri_rows_html = "\n".join(
         f'<tr><td>{name}</td><td>{unit}</td>'
