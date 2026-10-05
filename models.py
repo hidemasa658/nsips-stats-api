@@ -84,6 +84,7 @@ class IngestPayload(BaseModel):
     fees: list[FeeIn] = []
     rps: list[RpIn] = []
     drug_pricings: list[DrugPricingIn] = []
+    update_mode: bool = False  # True なら既存 source_id の body_sanitized を上書き更新
 
 
 class IngestResponse(BaseModel):

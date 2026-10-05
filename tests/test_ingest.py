@@ -151,6 +151,54 @@ def test_ingest_dedup_A_skipped_when_U_exists():
     assert n == 1
 
 
+def test_ingest_dedup_D_cancels_A():
+    """D (削除版) 受信 → 既存 A を削除 かつ D 自身も登録しない"""
+    client = TestClient(app)
+    r1 = client.post(
+        "/ingest",
+        json=_payload_with_body(
+            "d_src_A", _body(uketuke="260902001994001", kubun="A")
+        ),
+        headers=_headers(),
+    )
+    assert r1.json()["status"] == "ok"
+
+    # D は 枝番が空で届く (Pharnes 仕様) → 受付番号のみでマッチする必要あり
+    r2 = client.post(
+        "/ingest",
+        json=_payload_with_body(
+            "d_src_D", _body(uketuke="260902001994001", edaban="", kubun="D")
+        ),
+        headers=_headers(),
+    )
+    assert r2.json()["status"] == "deleted"
+
+    conn = get_conn()
+    n = conn.execute(
+        "SELECT COUNT(*) FROM prescriptions WHERE source_id IN ('d_src_A','d_src_D')"
+    ).fetchone()[0]
+    assert n == 0, "A/D 両方 削除されるべき"
+
+
+def test_ingest_D_without_existing_is_skipped():
+    """D 単独受信 (対応 A が未着信) → 登録しない"""
+    client = TestClient(app)
+    r = client.post(
+        "/ingest",
+        json=_payload_with_body(
+            "d_only", _body(uketuke="260903009999901", kubun="D")
+        ),
+        headers=_headers(),
+    )
+    assert r.json()["status"] == "deleted"
+
+    conn = get_conn()
+    n = conn.execute(
+        "SELECT COUNT(*) FROM prescriptions WHERE source_id='d_only'"
+    ).fetchone()[0]
+    assert n == 0
+
+
 def test_ingest_server_overrides_dispense_date_from_body():
     """client が 処方日 [4] を dispense_date として送っても、
     サーバ側で body_sanitized の [7] (調剤日) に上書き。"""
@@ -175,6 +223,60 @@ def test_ingest_server_overrides_dispense_date_from_body():
     assert row["dispense_date"] == "20260926", (
         f"server が調剤日で上書きするはず: {row['dispense_date']}"
     )
+
+
+def test_ingest_update_mode_overwrites_body():
+    """update_mode=true の場合、同じ source_id の body_sanitized を上書き更新。
+    backfill (record 1 保持版 で再送信) のユースケース。"""
+    client = TestClient(app)
+    # 初回送信 (record 1 削除版)
+    old_body = (
+        "VER010603,20260911120000,X,X,0,0,X,X,X,X,X,\n"
+        "2,260911000321701,66,A,20260911,,20260911,20260911,0,0\n"
+        "5,100,0,0,0,100,0,70,0,0,0,0,100,300,0,0,0,0,0,0,0,0,0\n"
+    )
+    r1 = client.post(
+        "/ingest",
+        json={**_payload("upd_src"), "body_sanitized": old_body, "dispense_date": "20260911"},
+        headers=_headers(),
+    )
+    assert r1.json()["status"] == "ok"
+    pid1 = r1.json()["prescription_id"]
+
+    # 再送信 (record 1 保持版、update_mode=true)
+    new_body = (
+        "VER010603,20260911120000,X,X,0,0,X,X,X,X,X,\n"
+        "1,*****,*****,*****,2,*****,*****,*****,,*****,,,0,1,06273114,,37,1998,2,0,100,0,,,,81149106,*****\n"
+        "2,260911000321701,66,A,20260911,,20260911,20260911,0,0\n"
+        "5,100,0,0,0,100,0,70,0,0,0,0,100,300,0,0,0,0,0,0,0,0,0\n"
+    )
+    r2 = client.post(
+        "/ingest",
+        json={**_payload("upd_src"), "body_sanitized": new_body,
+              "dispense_date": "20260911", "update_mode": True},
+        headers=_headers(),
+    )
+    assert r2.json()["status"] == "updated"
+    assert r2.json()["prescription_id"] == pid1  # 同じ id
+
+    # DB の body_sanitized が新版に置き換わっているか
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT body_sanitized FROM prescriptions WHERE source_id='upd_src'"
+    ).fetchone()
+    assert "06273114" in row["body_sanitized"], "保険者番号が保存されるべき"
+    assert "81149106" in row["body_sanitized"], "公費負担者番号が保存されるべき"
+
+
+def test_ingest_update_mode_without_existing_falls_through():
+    """update_mode=true でも 既存 source_id がなければ 通常の新規登録"""
+    client = TestClient(app)
+    r = client.post(
+        "/ingest",
+        json={**_payload("upd_new"), "update_mode": True},
+        headers=_headers(),
+    )
+    assert r.json()["status"] == "ok"  # 新規登録
 
 
 def test_ingest_different_receipt_no_conflict():

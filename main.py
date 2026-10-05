@@ -49,6 +49,32 @@ import threading as _threading  # noqa: E402
 _INGEST_LOCK = _threading.Lock()
 
 
+# 保険診療 10割公費処方 (基本料>0 & copay=0 & nyukin=pts*10) の 一部負担金 を
+# 五捨五超入(pts × 3割) で計上し直すための SQL 式 (レセコン PDF と整合)
+# 10円まるめ ルール:
+#   raw = pts × 3
+#   if raw % 10 <= 5: raw - (raw % 10)       (切り捨て)
+#   else:             raw - (raw % 10) + 10  (切り上げ)
+_IS_10WARI_KOHI = (
+    "dispensing_base_fee > 0 "
+    "AND COALESCE(patient_copay, 0) = 0 "
+    "AND COALESCE(patient_copay_total, 0) > 0 "
+    "AND COALESCE(patient_copay_total, 0) = COALESCE(total_points, 0) * 10"
+)
+_GOSHA_3WARI = (
+    "((COALESCE(total_points, 0) * 3) / 10) * 10 "
+    "+ CASE WHEN (COALESCE(total_points, 0) * 3) % 10 > 5 THEN 10 ELSE 0 END"
+)
+EFFECTIVE_COPAY_EXPR = (
+    f"CASE WHEN ({_IS_10WARI_KOHI}) THEN ({_GOSHA_3WARI}) "
+    "ELSE COALESCE(patient_copay, 0) END"
+)
+EFFECTIVE_NYUKIN_EXPR = (
+    f"CASE WHEN ({_IS_10WARI_KOHI}) THEN ({_GOSHA_3WARI}) "
+    "ELSE COALESCE(patient_copay_total, 0) END"
+)
+
+
 def verify_token(x_api_token: str | None = Header(default=None)) -> None:
     if not API_TOKEN or x_api_token != API_TOKEN:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
@@ -188,6 +214,14 @@ def _ingest_impl(payload: "IngestPayload") -> "IngestResponse":  # noqa: F821
         "SELECT id FROM prescriptions WHERE source_id=?", (payload.source_id,)
     ).fetchone()
     if row is not None:
+        if getattr(payload, "update_mode", False):
+            # backfill: 既存レコードの body_sanitized のみ上書き (関連子テーブルは触らない)
+            conn.execute(
+                "UPDATE prescriptions SET body_sanitized=? WHERE id=?",
+                (payload.body_sanitized, row["id"]),
+            )
+            conn.commit()
+            return IngestResponse(status="updated", prescription_id=row["id"])
         return IngestResponse(status="duplicate", prescription_id=row["id"])
 
     # 安全弁: client parser が古い場合 body_sanitized から dispense_date を再抽出
@@ -195,12 +229,31 @@ def _ingest_impl(payload: "IngestPayload") -> "IngestResponse":  # noqa: F821
     if dispense_date_from_body:
         payload.dispense_date = dispense_date_from_body
 
-    # A/U 自動 dedup: 同じ (受付番号, 枝番, dispense_date) の既存レコードと突合
+    # A/U/D 自動 dedup: 同じ (受付番号, 枝番, dispense_date) の既存レコードと突合
     #   U 受信 → 既存 (A/U) 全削除 して自身を insert (訂正版で上書き)
+    #   D 受信 → 既存 (A/U) 全削除 して自身も登録しない (削除版)
     #   A 受信 → 既存 (A/U) あれば skip (=既に反映済み)
     receipt_info = _extract_receipt_info(payload.body_sanitized or "")
     if receipt_info and payload.dispense_date:
         uketuke, edaban, kubun = receipt_info
+
+        if kubun == "D":
+            # 削除版: 既存 A/U を全削除 (未着信でも OK) し、D 自身も登録しない
+            # 注: Pharnes の D は 枝番 が空で出力されるため 受付番号のみでマッチ
+            candidates = conn.execute(
+                "SELECT id, body_sanitized FROM prescriptions WHERE dispense_date=? AND body_sanitized IS NOT NULL",
+                (payload.dispense_date,),
+            ).fetchall()
+            deleted_id = None
+            for r in candidates:
+                info = _extract_receipt_info(r["body_sanitized"])
+                if info and info[0] == uketuke:
+                    _delete_prescription_cascade(conn, r["id"])
+                    if deleted_id is None:
+                        deleted_id = r["id"]
+            conn.commit()
+            return IngestResponse(status="deleted", prescription_id=deleted_id)
+
         candidates = conn.execute(
             "SELECT id, body_sanitized FROM prescriptions WHERE dispense_date=? AND body_sanitized IS NOT NULL",
             (payload.dispense_date,),
@@ -2026,6 +2079,8 @@ def _daily_report_kwargs(conn, period_where: str, prescription_count: int) -> di
         )
 
     # 期間内の総計 (円換算)
+    # Note: 10割公費処方の 五捨五超入補正は 誤判定が多いため適用せず NSIPS 原本値を使用
+    # (保険扱い/自費扱い は Pharnes 内部フラグで NSIPS 側では区別不可能)
     row = conn.execute(
         f"""SELECT COALESCE(SUM(total_points), 0) AS tp,
                     COALESCE(SUM(patient_copay), 0) AS copay,
@@ -2380,19 +2435,12 @@ def dashboard(
         for r in pharm_data
     ) or '<tr><td colspan="3">(該当なし)</td></tr>'
 
-    # 用法内訳 (診療報酬「1剤」定義、レセコン集計と整合):
-    #   内服: (処方, usage_code, dosage_form_code) 単位 (同用法+同剤形)
-    #   内滴: rp単位 (NSIPS record 3 [8]=1、内服用滴剤 例:ラキソベロン)
-    #   頓服: rp単位 (1銘柄1剤 原則)
-    #   外用: (処方, usage_code, site_text) 単位 (同用法+同部位)
-    #   注射: rp単位
+    # 用法内訳 (薬剤料算定単位 = RP単位、レセコン PDF 集計と整合):
+    #   内服/内滴/頓服/外用/注射: すべて NSIPS record 3 の rp_no 単位でカウント
+    # (令和6年「1剤」定義=服用時点統合は 調剤管理料推定 の方で使用)
     _uk_naifuku = conn.execute(f"""
-        SELECT COUNT(*) FROM (
-          SELECT DISTINCT r.prescription_id, r.usage_code, d.dosage_form_code
-          FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
-          LEFT JOIN drugs d ON d.prescription_id=r.prescription_id AND d.rp_no=r.rp_no
-          WHERE {period_where} AND r.usage_kind='内服'
-        )""").fetchone()[0]
+        SELECT COUNT(*) FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
+        WHERE {period_where} AND r.usage_kind='内服'""").fetchone()[0]
     _uk_naiteki = conn.execute(f"""
         SELECT COUNT(*) FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
         WHERE {period_where} AND r.usage_kind='内滴'""").fetchone()[0]
@@ -2400,11 +2448,8 @@ def dashboard(
         SELECT COUNT(*) FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
         WHERE {period_where} AND r.usage_kind='頓服'""").fetchone()[0]
     _uk_ext = conn.execute(f"""
-        SELECT COUNT(*) FROM (
-          SELECT DISTINCT r.prescription_id, r.usage_code, r.site_text
-          FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
-          WHERE {period_where} AND r.usage_kind='外用'
-        )""").fetchone()[0]
+        SELECT COUNT(*) FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
+        WHERE {period_where} AND r.usage_kind='外用'""").fetchone()[0]
     _uk_inj = conn.execute(f"""
         SELECT COUNT(*) FROM rps r JOIN prescriptions p ON r.prescription_id=p.id
         WHERE {period_where} AND r.usage_kind='注射'""").fetchone()[0]

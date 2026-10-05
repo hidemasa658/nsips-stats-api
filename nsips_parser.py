@@ -1,4 +1,6 @@
-"""NSIPS .txt をレコード種別ごとにパース。record 1 (患者情報) は必ず破棄する。"""
+"""NSIPS .txt をレコード種別ごとにパース。
+record 1 (患者情報) は sanitize_body で PII フィールドをマスク、保険者番号・公費負担者番号は保持。
+"""
 from __future__ import annotations
 
 
@@ -45,11 +47,48 @@ def get_dosage_form_code(yj_code: str | None) -> str | None:
     return yj_code[7]
 
 
+# Pharnes v1.06-03 record 1 で マスクすべき 個人特定可能フィールド位置
+# (保険者番号・公費負担者番号 は program-level コードなので 保持)
+# 2026-10-05 実データ監査で [8]電話/[16]保険証記号/[17]保険証番号も要マスクと判明
+_RECORD1_PII_INDEXES = frozenset({
+    1,   # 薬局内患者ID
+    2,   # カナ氏名
+    3,   # 漢字氏名
+    5,   # 生年月日
+    6,   # 郵便番号 (7桁は街区レベルの精度)
+    7,   # 住所
+    8,   # 電話番号 (variant A: 固定電話がここ)
+    9,   # 電話番号 (variant B: 携帯電話がここ)
+    16,  # 保険証記号 (保険者内で個人特定可能)
+    17,  # 保険証番号 (個人特定確実)
+    26,  # 公費受給者番号1
+    28,  # 公費受給者番号2
+    30,  # 公費受給者番号3
+    32,  # 公費受給者番号4
+})
+
+
 def sanitize_body(body: str) -> str:
-    """NSIPS 本文から record 1 (患者情報) 行を削除して返す。"""
-    return "\n".join(
-        line for line in body.splitlines() if not line.lstrip().startswith("1,")
-    )
+    """NSIPS 本文の record 1 で 個人特定可能フィールドを '*****' に置換し、
+    保険者番号・公費負担者番号 (法別番号付き program-level コード) は保持する。
+    他 record は 無改変。
+
+    Note:
+        Pharnes v1.06-03 の 原本 record 1 は PII (氏名カナ・電話等) を
+        マスクせず出力するため、watcher 側で 必ず sanitize してから
+        サーバーに送信する。
+    """
+    out = []
+    for raw_line in body.splitlines():
+        if not raw_line.startswith("1,"):
+            out.append(raw_line)
+            continue
+        parts = raw_line.split(",")
+        for idx in _RECORD1_PII_INDEXES:
+            if idx < len(parts) and parts[idx].strip():
+                parts[idx] = "*****"
+        out.append(",".join(parts))
+    return "\n".join(out)
 
 
 def _col(fields: list[str], idx: int) -> str | None:

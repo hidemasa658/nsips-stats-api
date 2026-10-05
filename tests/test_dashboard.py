@@ -85,3 +85,9 @@ def test_dashboard_wrong_token():
     client = TestClient(app)
     r = client.get("/dashboard?token=wrong")
     assert r.status_code == 401
+
+
+# Note: 五捨五超入補正ロジック は 保留 (10割公費/自費 の 区別が NSIPS で不可能、
+#       4日分 の 誤判定過剰補正が発生したため)。
+#       EFFECTIVE_COPAY_EXPR / EFFECTIVE_NYUKIN_EXPR は 定義のみ main.py に残置、
+#       使用箇所はコメントアウト。将来 record 1 保持 → 公費コード判定 で復活予定。
